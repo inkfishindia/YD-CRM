@@ -58,25 +58,25 @@ type HeaderMap = Record<string, number>;
 
 // SECTION 2 - CSV Defaults for Initialization
 // 2.1 TKW LEAD SHEET (Primary) - Added expected_close_date at end
-const HEADER_LEAD_CSV = `lead_id,date,source,employee_name,company_name,contact_person,number,email,city,order_information,estimated_qty,product_type,print_type,priority,category,yds_poc,status,stage,design,contact_status,payment_update,contact_attempts,last_contact_date,next_action,next_action_date,lost_reason,won_date,lost_date,sla_status,days_open,remarks,order_notes,last_attempt_date,assigned_to_history,reassign_reason,stale_date,created_at,updated_at,first_response_time,source_detail,sla_health,whatsapp_message,customer_type,action_overdue,stage_changed_date,platform_type,integration_ready,sample_required,sample_status,activation_date,workflow_type,store_url,account_created,dashboard_link_sent,designs_ready,first_product_created,onboarding_started_date,intent,tags,order_status,expected_close_date`;
+export const HEADER_LEAD_CSV = `lead_id,date,source,employee_name,company_name,contact_person,number,email,city,order_information,estimated_qty,product_type,print_type,priority,category,yds_poc,status,stage,design,contact_status,payment_update,contact_attempts,last_contact_date,next_action,next_action_date,lost_reason,won_date,lost_date,sla_status,days_open,remarks,order_notes,last_attempt_date,assigned_to_history,reassign_reason,stale_date,created_at,updated_at,first_response_time,source_detail,sla_health,whatsapp_message,customer_type,action_overdue,stage_changed_date,platform_type,integration_ready,sample_required,sample_status,activation_date,workflow_type,store_url,account_created,dashboard_link_sent,designs_ready,first_product_created,onboarding_started_date,intent,tags,order_status,expected_close_date`;
 
 // 2.6 Activity Log
-const HEADER_ACTIVITY_CSV = `log_id,lead_id,flow_type,activity_type,old_value,new_value,field_changed,notes,created_by,created_at,source,sla_status_at_event,intent_at_event,stage_at_event,owner_at_event,attachment_url,route_event,sample_event,system_rule_fired,checksum`;
+export const HEADER_ACTIVITY_CSV = `log_id,lead_id,flow_type,activity_type,old_value,new_value,field_changed,notes,created_by,created_at,source,sla_status_at_event,intent_at_event,stage_at_event,owner_at_event,attachment_url,route_event,sample_event,system_rule_fired,checksum`;
 
 // 2.7 Legend - Added probability
-const HEADER_LEGEND_CSV = `list_name,value,display_order,color,is_default,is_active,probability`;
+export const HEADER_LEGEND_CSV = `list_name,value,display_order,color,is_default,is_active,probability`;
 
 // 2.8 Stage Rules
-const HEADER_STAGE_RULES_CSV = `flow_type,from_stage,to_stage,trigger,auto_set_field,auto_set_value,requires_field,template_category,next_action_type,next_action_due_days,notes,is_active`;
+export const HEADER_STAGE_RULES_CSV = `flow_type,from_stage,to_stage,trigger,auto_set_field,auto_set_value,requires_field,template_category,next_action_type,next_action_due_days,notes,is_active`;
 
 // 2.10 SLA Rules
-const HEADER_SLA_RULES_CSV = `flow_type,stage,condition_key,condition_value,sla_hours,warning_hours,overdue_label,warning_label,ok_label,is_active`;
+export const HEADER_SLA_RULES_CSV = `flow_type,stage,condition_key,condition_value,sla_hours,warning_hours,overdue_label,warning_label,ok_label,is_active`;
 
 // 2.11 Auto Next Action
-const HEADER_AUTO_ACTION_CSV = `flow_type,stage,condition_key,condition_value,next_action_type,template_category,days_offset,is_active`;
+export const HEADER_AUTO_ACTION_CSV = `flow_type,stage,condition_key,condition_value,next_action_type,template_category,days_offset,is_active`;
 
 // 2.12 Message Templates
-const HEADER_TEMPLATES_CSV = `template_id,flow_type,stage,template_category,title,body,variables,is_active`;
+export const HEADER_TEMPLATES_CSV = `template_id,flow_type,stage,template_category,title,body,variables,is_active`;
 
 
 // Auth State
@@ -702,6 +702,24 @@ const getLocalDB = (): SystemData => {
             });
         });
     });
+
+    // Add Default Catalogs (Feature for Templates)
+    const defaultCatalogs = [
+        { name: "2025 Product Catalog", url: "https://example.com/catalog-2025" },
+        { name: "Price List v3", url: "https://example.com/prices-v3.pdf" }
+    ];
+    defaultCatalogs.forEach((cat, idx) => {
+        legends.push({
+            listName: 'catalog_link',
+            value: cat.name,
+            displayOrder: idx + 1,
+            color: cat.url, // Storing URL in color field
+            isDefault: false,
+            isActive: true,
+            probability: 0
+        });
+    });
+
 
     // 3. Stage Rules
     const stageRules: StageRule[] = [];

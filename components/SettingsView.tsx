@@ -3,8 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { LegendItem, StageRule, SLARule, AutoActionRule, MessageTemplate, GoogleUser, Lead, REQUIRED_FIELDS_BY_STAGE, FORBIDDEN_TRANSITIONS } from '../types';
 import { Button } from './ui/Button';
 import { Input, Select, Textarea } from './ui/Form';
-import { Edit2, Plus, CheckCircle, Trash2, Copy, AlertTriangle, Link, Save, RotateCcw, Cloud, Database, CloudOff, LogIn, Hammer, Loader2, MinusCircle, Table, BookOpen, Info, List, Stethoscope, Wrench, Shield, Zap, LayoutTemplate, Activity, UploadCloud, Tag, GitMerge, ArrowDown, Ban, CheckSquare, Clock, ArrowRight, Users, History, MessageCircle } from 'lucide-react';
-import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populateConfigData, SHEET_NAME_LEADS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY, SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES } from '../services/sheetService';
+import { Edit2, Plus, CheckCircle, Trash2, Copy, AlertTriangle, Link, Save, RotateCcw, Cloud, Database, CloudOff, LogIn, Hammer, Loader2, MinusCircle, Table, BookOpen, Info, List, Stethoscope, Wrench, Shield, Zap, LayoutTemplate, Activity, UploadCloud, Tag, GitMerge, ArrowDown, Ban, CheckSquare, Clock, ArrowRight, Users, History, MessageCircle, FileSpreadsheet, Box } from 'lucide-react';
+import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populateConfigData, SHEET_NAME_LEADS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY, SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES, HEADER_LEAD_CSV, HEADER_LEGEND_CSV, HEADER_ACTIVITY_CSV, HEADER_STAGE_RULES_CSV, HEADER_SLA_RULES_CSV, HEADER_AUTO_ACTION_CSV, HEADER_TEMPLATES_CSV } from '../services/sheetService';
 import { Badge } from './ui/Badge';
 
 interface SettingsViewProps {
@@ -32,7 +32,7 @@ interface SettingsViewProps {
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: Activity },
-  { id: 'sop', label: 'Workflow SOP', icon: GitMerge },
+  { id: 'sop', label: 'Workflow & Data SOP', icon: GitMerge },
   { id: 'diagnostics', label: 'Diagnostics', icon: Stethoscope },
   { id: 'connection', label: 'Connection', icon: Database },
   { id: 'picklists', label: 'Picklists', icon: List },
@@ -114,7 +114,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
              ))}
          </nav>
          <div className="p-4 border-t border-gray-100 text-xs text-gray-400 text-center">
-             YDS Leads v1.5
+             YDS Leads v1.6
          </div>
       </div>
 
@@ -176,6 +176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     user={user} 
                     syncStatus={syncStatus} 
                     legends={legends}
+                    onUpdateLegends={onUpdateLegends}
                  />
              )}
          </div>
@@ -230,7 +231,7 @@ const DashboardSettings: React.FC<{ user: GoogleUser | null, syncStatus: 'succes
                     <Info size={18} /> Admin Tips
                 </h3>
                 <ul className="list-disc pl-5 text-sm text-blue-800 space-y-2">
-                    <li>Use the <strong>Diagnostics</strong> tab to find "dirty data" (leads missing required fields).</li>
+                    <li>Use the <strong>Workflow SOP</strong> tab to visualize the pipeline flow or inspect the data schema.</li>
                     <li>Check <strong>Connection</strong> tab to validate that your Google Sheet has all required columns.</li>
                     <li>Manage all business logic (SLA, Auto-Assign) in the <strong>Automation</strong> tab.</li>
                 </ul>
@@ -239,19 +240,33 @@ const DashboardSettings: React.FC<{ user: GoogleUser | null, syncStatus: 'succes
     )
 }
 
-// --- 2. SOP VISUALIZER (New) ---
+// --- 2. SOP VISUALIZER (ENHANCED) ---
 
-const SheetCard: React.FC<{ title: string, description: string, icon: React.ReactNode, color: string }> = ({ title, description, icon, color }) => (
-    <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-start gap-3">
-        <div className={`p-2 rounded-lg ${color} text-white shrink-0`}>
-            {icon}
+const SchemaCard: React.FC<{ title: string, description: string, headers: string, color: string, icon: React.ReactNode }> = ({ title, description, headers, color, icon }) => {
+    const fields = headers.split(',').map(s => s.trim());
+
+    return (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+            <div className={`px-4 py-3 border-b border-gray-100 flex items-center justify-between ${color} bg-opacity-10`}>
+                <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-lg ${color} text-white`}>{icon}</div>
+                    <h4 className="font-bold text-gray-900 text-sm">{title}</h4>
+                </div>
+                <Badge variant="neutral" className="text-[10px]">{fields.length} Fields</Badge>
+            </div>
+            <div className="p-4">
+                <p className="text-xs text-gray-500 mb-3 italic">{description}</p>
+                <div className="flex flex-wrap gap-1.5">
+                    {fields.map(f => (
+                        <span key={f} className="text-[10px] font-mono bg-gray-50 text-gray-600 px-1.5 py-0.5 rounded border border-gray-100">
+                            {f}
+                        </span>
+                    ))}
+                </div>
+            </div>
         </div>
-        <div>
-            <h4 className="font-bold text-gray-900 text-sm">{title}</h4>
-            <p className="text-xs text-gray-500 mt-1">{description}</p>
-        </div>
-    </div>
-);
+    );
+};
 
 const SopVisualizer: React.FC<{ 
     legends: LegendItem[], 
@@ -259,6 +274,8 @@ const SopVisualizer: React.FC<{
     slaRules: SLARule[], 
     autoActions: AutoActionRule[] 
 }> = ({ legends, stageRules, slaRules, autoActions }) => {
+    const [viewMode, setViewMode] = useState<'pipeline' | 'schema'>('pipeline');
+
     const stages = useMemo(() => {
         return legends
             .filter(l => l.listName === 'stage' && l.isActive)
@@ -267,73 +284,94 @@ const SopVisualizer: React.FC<{
     }, [legends]);
 
     return (
-        <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
-             <div className="flex justify-between items-center">
+        <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+             <div className="flex justify-between items-center mb-4">
                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">Pipeline SOP & Data Architecture</h2>
-                    <p className="text-sm text-gray-500">System rules, workflow logic, and connected Google Sheets.</p>
+                    <h2 className="text-xl font-bold text-gray-900">System Architecture</h2>
+                    <p className="text-sm text-gray-500">Visualize workflow logic and underlying data structures.</p>
                  </div>
-                 <Badge variant="info">Live System Logic</Badge>
+                 <div className="flex bg-gray-100 p-1 rounded-lg">
+                     <button 
+                        onClick={() => setViewMode('pipeline')}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${viewMode === 'pipeline' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                     >
+                         <GitMerge size={14} /> Workflow View
+                     </button>
+                     <button 
+                        onClick={() => setViewMode('schema')}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${viewMode === 'schema' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                     >
+                         <Database size={14} /> Data Schema View
+                     </button>
+                 </div>
              </div>
 
-             {/* Connected Sheets Architecture */}
-             <div>
-                <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <Database size={16} className="text-blue-600"/> Connected Google Sheets
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <SheetCard 
-                        title={SHEET_NAME_LEADS}
-                        description="The Master Database. Contains all lead identities, status, and sales data."
-                        icon={<Users size={18}/>}
+             {viewMode === 'schema' && (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                     <div className="col-span-full mb-2">
+                        <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg flex items-start gap-3">
+                            <Info size={16} className="text-blue-500 mt-0.5" />
+                            <div className="text-xs text-blue-800">
+                                <p className="font-bold mb-1">About Data Architecture</p>
+                                <p>The application reads and writes to these specific Google Sheets. The <strong>Field Tags</strong> below represent the exact column headers expected in each sheet.</p>
+                            </div>
+                        </div>
+                     </div>
+
+                     <SchemaCard 
+                        title={SHEET_NAME_LEADS} 
+                        description="Primary database for Lead Identity, Sales Info, and Status tracking."
+                        headers={HEADER_LEAD_CSV}
                         color="bg-blue-600"
-                    />
-                    <SheetCard 
-                        title={SHEET_NAME_LEGEND}
-                        description="Configuration source for all dropdowns (Stages, Owners, Products)."
-                        icon={<List size={18}/>}
-                        color="bg-purple-600"
-                    />
-                     <SheetCard 
-                        title={SHEET_NAME_ACTIVITY}
-                        description="Immutable audit trail of every action, stage change, and note."
-                        icon={<History size={18}/>}
+                        icon={<Users size={16} />}
+                     />
+                     <SchemaCard 
+                        title={SHEET_NAME_ACTIVITY} 
+                        description="Immutable audit trail for compliance and history tracking."
+                        headers={HEADER_ACTIVITY_CSV}
                         color="bg-gray-600"
-                    />
-                    <SheetCard 
-                        title={SHEET_NAME_STAGE_RULES}
-                        description="Defines the logic for moving between stages (validation & automation)."
-                        icon={<GitMerge size={18}/>}
+                        icon={<History size={16} />}
+                     />
+                     <SchemaCard 
+                        title={SHEET_NAME_LEGEND} 
+                        description="Configuration source for all dropdowns (Stages, Owners, Products)."
+                        headers={HEADER_LEGEND_CSV}
+                        color="bg-purple-600"
+                        icon={<List size={16} />}
+                     />
+                     <SchemaCard 
+                        title={SHEET_NAME_STAGE_RULES} 
+                        description="Logic engine for stage transitions and automation triggers."
+                        headers={HEADER_STAGE_RULES_CSV}
                         color="bg-indigo-600"
-                    />
-                    <SheetCard 
-                        title={SHEET_NAME_SLA_RULES}
-                        description="Time limits for each stage to calculate health and overdue alerts."
-                        icon={<Clock size={18}/>}
+                        icon={<GitMerge size={16} />}
+                     />
+                     <SchemaCard 
+                        title={SHEET_NAME_SLA_RULES} 
+                        description="Time-based rules for health monitoring."
+                        headers={HEADER_SLA_RULES_CSV}
                         color="bg-orange-600"
-                    />
-                    <SheetCard 
-                        title={SHEET_NAME_AUTO_ACTION}
-                        description="Triggers default next steps when a lead enters a specific stage."
-                        icon={<Zap size={18}/>}
+                        icon={<Clock size={16} />}
+                     />
+                     <SchemaCard 
+                        title={SHEET_NAME_AUTO_ACTION} 
+                        description="Default next actions triggered by stage entry."
+                        headers={HEADER_AUTO_ACTION_CSV}
                         color="bg-yellow-500"
-                    />
-                    <SheetCard 
-                        title={SHEET_NAME_TEMPLATES}
-                        description="Pre-written WhatsApp/Email responses mapped to stages."
-                        icon={<MessageCircle size={18}/>}
+                        icon={<Zap size={16} />}
+                     />
+                     <SchemaCard 
+                        title={SHEET_NAME_TEMPLATES} 
+                        description="Communication templates for WhatsApp/Email."
+                        headers={HEADER_TEMPLATES_CSV}
                         color="bg-green-600"
-                    />
-                </div>
-             </div>
+                        icon={<MessageCircle size={16} />}
+                     />
+                 </div>
+             )}
 
-             <div className="border-t border-gray-200"></div>
-
-             <div>
-                 <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-6 flex items-center gap-2">
-                    <GitMerge size={16} className="text-gray-600"/> Stage Progression Workflow
-                </h3>
-                 <div className="relative space-y-8 pl-8 border-l-2 border-gray-200 ml-4">
+             {viewMode === 'pipeline' && (
+                 <div className="relative space-y-8 pl-8 border-l-2 border-gray-200 ml-4 animate-fade-in">
                      {stages.map((stage, idx) => {
                          const isFirst = idx === 0;
                          const isLast = idx === stages.length - 1;
@@ -475,7 +513,7 @@ const SopVisualizer: React.FC<{
                          );
                      })}
                  </div>
-             </div>
+             )}
         </div>
     );
 }
@@ -798,7 +836,8 @@ const ConnectionSettings: React.FC<{
 // --- PICKLISTS EDITOR ---
 
 const PicklistsSettings: React.FC<{ legends: LegendItem[], onUpdate: (l: LegendItem[]) => void, user: GoogleUser | null, syncStatus: 'success' | 'error' }> = ({ legends, onUpdate, user, syncStatus }) => {
-    const LIST_TYPES: string[] = Array.from(new Set(legends.map(l => l.listName)));
+    // Exclude 'catalog_link' from generic picklist editor as it has special handling in Templates tab
+    const LIST_TYPES: string[] = Array.from(new Set(legends.filter(l => l.listName !== 'catalog_link').map(l => l.listName)));
     const [selectedList, setSelectedList] = useState(LIST_TYPES[0] || 'source');
     const [newItemValue, setNewItemValue] = useState('');
     const [newItemProb, setNewItemProb] = useState<number>(0);
@@ -1213,14 +1252,22 @@ const TemplatesSettings: React.FC<{
     onUpdate: (t: MessageTemplate[]) => void, 
     user: GoogleUser | null, 
     syncStatus: 'success' | 'error',
-    legends: LegendItem[]
-}> = ({ templates, onUpdate, user, syncStatus, legends }) => {
+    legends: LegendItem[],
+    onUpdateLegends: (l: LegendItem[]) => void
+}> = ({ templates, onUpdate, user, syncStatus, legends, onUpdateLegends }) => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<MessageTemplate>>({});
+    
+    // Catalog Management State
+    const [newCatalogName, setNewCatalogName] = useState('');
+    const [newCatalogUrl, setNewCatalogUrl] = useState('');
 
     // Dynamic Options from Legends
     const stageOptions = useMemo(() => legends.filter(l => l.listName === 'stage' && l.isActive).map(l => l.value), [legends]);
     const categoryOptions = useMemo(() => legends.filter(l => l.listName === 'category' && l.isActive).map(l => l.value), [legends]);
+    // Filter out generic picklists, keep specific catalog links
+    const catalogLinks = useMemo(() => legends.filter(l => l.listName === 'catalog_link'), [legends]);
+
     const INFO_LEVELS = ['Basic', 'Detailed', 'Any', 'Intro', 'Follow-up'];
 
     const VARIABLES = [
@@ -1272,8 +1319,82 @@ const TemplatesSettings: React.FC<{
         }));
     };
 
+    const insertLink = (linkUrl: string) => {
+        setEditForm(prev => ({
+            ...prev,
+            body: (prev.body || '') + ' ' + linkUrl
+        }));
+    };
+
+    // --- Catalog Management Handlers ---
+    const handleAddCatalog = () => {
+        if (!newCatalogName || !newCatalogUrl) return;
+        const newItem: LegendItem = {
+            listName: 'catalog_link',
+            value: newCatalogName,
+            color: newCatalogUrl, // Storing URL in color field
+            displayOrder: catalogLinks.length + 1,
+            isDefault: false,
+            isActive: true,
+            probability: 0
+        };
+        onUpdateLegends([...legends, newItem]);
+        setNewCatalogName('');
+        setNewCatalogUrl('');
+    };
+
+    const handleDeleteCatalog = (value: string) => {
+        if(confirm("Delete this link?")) {
+            onUpdateLegends(legends.filter(l => !(l.listName === 'catalog_link' && l.value === value)));
+        }
+    };
+
     return (
-        <div className="space-y-4 animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+            {/* Catalog Manager Section */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                    <BookOpen size={16} className="text-gray-500" />
+                    <h3 className="text-sm font-bold text-gray-800">Manage Catalogs & Links</h3>
+                </div>
+                <div className="p-4">
+                    <div className="flex gap-2 mb-4">
+                        <Input 
+                            placeholder="Display Name (e.g. 2025 Catalog)" 
+                            value={newCatalogName} 
+                            onChange={e => setNewCatalogName(e.target.value)} 
+                            className="flex-1"
+                        />
+                        <Input 
+                            placeholder="URL (e.g. https://bit.ly/...)" 
+                            value={newCatalogUrl} 
+                            onChange={e => setNewCatalogUrl(e.target.value)} 
+                            className="flex-1"
+                        />
+                        <Button onClick={handleAddCatalog} disabled={!newCatalogName || !newCatalogUrl} size="sm" icon={<Plus size={14}/>}>Add Link</Button>
+                    </div>
+                    
+                    {catalogLinks.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {catalogLinks.map(cat => (
+                                <div key={cat.value} className="flex items-center justify-between p-2 rounded bg-gray-50 border border-gray-200 text-sm">
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                        <Link size={14} className="text-blue-500 shrink-0" />
+                                        <span className="font-bold text-gray-700 truncate">{cat.value}</span>
+                                        <span className="text-gray-400 text-xs truncate max-w-[150px]">{cat.color}</span>
+                                    </div>
+                                    <button onClick={() => handleDeleteCatalog(cat.value)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14}/></button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-xs text-gray-400 italic">No global links defined. Add catalogs or pricing sheets here to use them in templates.</p>
+                    )}
+                </div>
+            </div>
+
+            <div className="border-t border-gray-200 my-4"></div>
+
             <DataSourceBanner sheetName={SHEET_NAME_TEMPLATES} user={user} syncStatus={syncStatus} />
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-bold text-gray-800">Message Templates</h3>
@@ -1311,18 +1432,40 @@ const TemplatesSettings: React.FC<{
                     {/* Variable Toolbar */}
                     <div className="mb-2">
                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">Message Body</label>
-                         <div className="flex flex-wrap gap-1 mb-2">
-                             <span className="text-[10px] text-gray-400 font-bold self-center mr-1">INSERT VAR:</span>
-                             {VARIABLES.map(v => (
-                                 <button 
-                                    key={v.val} 
-                                    onClick={() => insertVariable(v.val)} 
-                                    className="text-[10px] bg-white hover:bg-blue-100 border border-gray-200 hover:border-blue-300 rounded px-2 py-0.5 font-mono text-gray-600 hover:text-blue-700 transition-colors flex items-center gap-1"
-                                 >
-                                     <Tag size={10} className="opacity-50"/> {v.label}
-                                 </button>
-                             ))}
+                         
+                         <div className="flex flex-wrap gap-2 mb-2 items-center">
+                             {/* Vars */}
+                             <div className="flex flex-wrap gap-1 border-r border-blue-200 pr-2 mr-2">
+                                 <span className="text-[10px] text-gray-400 font-bold self-center mr-1">VARS:</span>
+                                 {VARIABLES.map(v => (
+                                     <button 
+                                        key={v.val} 
+                                        onClick={() => insertVariable(v.val)} 
+                                        className="text-[10px] bg-white hover:bg-blue-100 border border-gray-200 hover:border-blue-300 rounded px-2 py-0.5 font-mono text-gray-600 hover:text-blue-700 transition-colors flex items-center gap-1"
+                                     >
+                                         <Tag size={10} className="opacity-50"/> {v.label}
+                                     </button>
+                                 ))}
+                             </div>
+
+                             {/* Links */}
+                             <div className="flex flex-wrap gap-1">
+                                 <span className="text-[10px] text-gray-400 font-bold self-center mr-1">LINKS:</span>
+                                 {catalogLinks.length > 0 ? catalogLinks.map(cat => (
+                                     <button 
+                                        key={cat.value} 
+                                        onClick={() => insertLink(cat.color)} 
+                                        className="text-[10px] bg-white hover:bg-green-100 border border-gray-200 hover:border-green-300 rounded px-2 py-0.5 font-bold text-gray-600 hover:text-green-700 transition-colors flex items-center gap-1"
+                                        title={cat.color}
+                                     >
+                                         <Link size={10} className="opacity-50"/> {cat.value}
+                                     </button>
+                                 )) : (
+                                     <span className="text-[10px] text-gray-400 italic">No links defined</span>
+                                 )}
+                             </div>
                          </div>
+
                          <Textarea 
                             label="" 
                             value={editForm.body || ''} 
