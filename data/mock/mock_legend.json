@@ -1,0 +1,12 @@
+{
+  "status_list": ["Open", "In Progress", "Closed", "Lost", "Converted"],
+  "stage_list": ["New", "Qualification", "Nurturing", "Ready to Route", "Routed"],
+  "priority_list": ["P1", "P2", "P3"],
+  "contact_status_list": ["Active", "Pending Reply", "Not Reachable"],
+  "payment_update_list": ["Pending", "Partially Paid", "Paid"],
+  "source_list": ["Vendor", "Chat", "Instagram", "Referral", "Walk-in"],
+  "category_list": ["POD", "Dropshipping", "Customisation", "Sampling", "B2B"],
+  "owner_list": ["Chandan", "Ashwini", "Muskan", "Arun", "Meena"],
+  "product_type_list": ["T-Shirt", "Hoodie", "Joggers", "Jackets", "Caps"],
+  "print_type_list": ["DTF", "Puff", "Embroidery", "Screen", "Vinyl"]
+}

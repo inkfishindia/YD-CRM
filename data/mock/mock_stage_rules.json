@@ -1,0 +1,20 @@
+[
+  {
+    "stage": "Qualification",
+    "next_allowed_stages": ["Nurturing", "Closed"],
+    "auto_assign_to": "Chandan",
+    "required_fields": ["company_name", "contact_person"]
+  },
+  {
+    "stage": "Nurturing",
+    "next_allowed_stages": ["Ready to Route", "Closed"],
+    "auto_assign_to": "",
+    "required_fields": ["next_action"]
+  },
+  {
+    "stage": "Ready to Route",
+    "next_allowed_stages": ["Routed"],
+    "auto_assign_to": "",
+    "required_fields": ["intent"]
+  }
+]

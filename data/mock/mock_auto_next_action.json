@@ -1,0 +1,17 @@
+[
+  {
+    "stage": "Qualification",
+    "next_action": "First Contact",
+    "days_to_followup": 1
+  },
+  {
+    "stage": "Nurturing",
+    "next_action": "Share Pricing",
+    "days_to_followup": 2
+  },
+  {
+    "stage": "Ready to Route",
+    "next_action": "Push to OMS / DS Dashboard",
+    "days_to_followup": 0
+  }
+]

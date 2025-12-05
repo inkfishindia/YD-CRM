@@ -1,0 +1,35 @@
+[
+  {
+    "id": "tpl_1",
+    "name": "First Contact",
+    "stage": "Qualification",
+    "action": "First Contact",
+    "body": "Hi {{contact_person}}! This is {{yds_poc}} from YDS. Saw your inquiry for {{company_name}} — can we quickly understand your requirement?",
+    "channel": "WhatsApp",
+    "subject": "Inquiry Response",
+    "category": "Intro",
+    "infoLevel": "Basic"
+  },
+  {
+    "id": "tpl_2",
+    "name": "Share Pricing",
+    "stage": "Nurturing",
+    "action": "Share Pricing",
+    "body": "Hi {{contact_person}}, here’s the pricing for the products you requested. Let me know what works!",
+    "channel": "WhatsApp",
+    "subject": "Pricing Details",
+    "category": "Quote",
+    "infoLevel": "Detailed"
+  },
+  {
+    "id": "tpl_3",
+    "name": "Routing Confirmation",
+    "stage": "Ready to Route",
+    "action": "Routing Confirmation",
+    "body": "We’re ready to proceed! Sending your details into our system now.",
+    "channel": "WhatsApp",
+    "subject": "Confirmation",
+    "category": "Status",
+    "infoLevel": "Basic"
+  }
+]

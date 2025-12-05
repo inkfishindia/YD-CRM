@@ -1,0 +1,5 @@
+[
+  { "stage": "Qualification", "sla_hours": 24, "escalation_level": "Low" },
+  { "stage": "Nurturing", "sla_hours": 48, "escalation_level": "Medium" },
+  { "stage": "Ready to Route", "sla_hours": 12, "escalation_level": "High" }
+]

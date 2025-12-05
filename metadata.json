@@ -1,0 +1,5 @@
+{
+  "name": "YDS Leads Manager",
+  "description": "A mobile-first lead management system integrated with Google Sheets for tracking status, POCs, and sales pipeline.",
+  "requestFramePermissions": []
+}

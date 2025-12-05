@@ -1,0 +1,13 @@
+[
+  {
+    "log_id": "log_001",
+    "timestamp": "2025-01-12T12:00:00Z",
+    "lead_id": "LD-001",
+    "changed_by": "Muskan",
+    "field": "stage",
+    "activity_type": "Stage Change",
+    "old_value": "New",
+    "new_value": "Qualification",
+    "notes": "Initial assessment complete"
+  }
+]
