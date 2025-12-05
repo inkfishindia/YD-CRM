@@ -1,8 +1,7 @@
 
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Lead, AppOptions, AUTO_NEXT_ACTIONS_DEFAULT, calculatePriority, addDaysToDate, AutoActionRule, MessageTemplate, StageRule, ActivityLog, parseDate, REQUIRED_FIELDS_BY_STAGE, FORBIDDEN_TRANSITIONS, formatDate, SLARule, determineLeadHealth, toInputDate, fromInputDate } from '../types';
-import { X, Phone, Mail, Calendar, MessageCircle, User, ArrowRight, CheckCircle2, History, Loader2, Send, ShoppingBag, Globe, AlertTriangle, Layers, Clock, ShieldAlert, AlertOctagon, UserPlus, Box, FileText, Check, ChevronDown, Lock, XCircle, Edit2, Filter, ChevronRight, CheckSquare, MapPin, Monitor, Tag, Flag, Briefcase, Rocket, TrendingUp } from 'lucide-react';
+import { X, Phone, Mail, Calendar, MessageCircle, User, ArrowRight, CheckCircle2, History, Loader2, Send, ShoppingBag, Globe, AlertTriangle, Layers, Clock, ShieldAlert, AlertOctagon, UserPlus, Box, FileText, Check, ChevronDown, Lock, XCircle, Edit2, Filter, ChevronRight, CheckSquare, MapPin, Monitor, Tag, Flag, Briefcase, Rocket, TrendingUp, Laptop, Factory, Package } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Select, Input, Textarea } from './ui/Form';
 import { Badge } from './ui/Badge';
@@ -50,7 +49,10 @@ const getFieldLabel = (field: string): string => {
         storeUrl: 'Store URL',
         onboardingStartedDate: 'Onboarding Date',
         dashboardLinkSent: 'Dash Link Sent',
-        expectedCloseDate: 'Expected Close Date'
+        expectedCloseDate: 'Expected Close Date',
+        accountCreated: 'Account Created',
+        firstProductCreated: 'First Product Live',
+        activationDate: 'Activation Date'
     };
     return map[field] || field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
 };
@@ -82,6 +84,8 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
   const options = appOptions || { stages: [], owners: [], sources: [], categories: [], productTypes: [], printTypes: [], contactStatus: [], paymentStatus: [], designStatus: [], lostReasons: [], customerTypes: [], platformTypes: [], sampleStatus: [], orderStatus: [], intents: [], workflowTypes: [] } as unknown as AppOptions;
 
   const isSampling = (formData.category || '').toLowerCase().includes('sampling');
+  const isDS = (formData.intent || '').toLowerCase().includes('drop') || (formData.category || '').toLowerCase().includes('drop');
+  const isB2B = (formData.intent || '').toLowerCase().includes('b2b') || (formData.category || '').toLowerCase().includes('corporate');
 
   useEffect(() => {
     if (isOpen) {
@@ -156,34 +160,21 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
       return status;
   }, [formData, requirements]);
 
-  // Intent-based Dynamic Fields logic (Section 3.4)
-  const activeFields = useMemo(() => {
-      const i = (formData.intent || '').toLowerCase();
-      // Basic fields for all
-      const basic = ['intent', 'customerType', 'estimatedQty', 'sampleRequired']; 
-      
-      if (i.includes('pod')) {
-          // POD Intent: Show product + print method + design
-          return [...basic, 'productType', 'printType', 'design', 'sampleStatus'];
-      }
-      if (i.includes('b2b') || i.includes('corporate')) {
-           // B2B Intent: Show corporate fields
-           return [...basic, 'workflowType', 'orderInfo']; 
-      }
-      if (i.includes('drop')) {
-           // DS Intent: Show platform fields
-           return [...basic, 'platformType', 'storeUrl', 'dashboardLinkSent', 'onboardingStartedDate'];
-      }
-      
-      // Default/Fallback
-      return [...basic, 'productType', 'orderInfo'];
-  }, [formData.intent]);
-
   // Routing Logic
   const routingStatus = useMemo(() => {
-      const i = (formData.intent || '').toLowerCase();
-      
-      if (i.includes('pod')) {
+      if (isDS) {
+           const hasPlatform = isFieldValid('platformType', formData.platformType);
+           const hasLink = formData.dashboardLinkSent === 'Yes';
+           const hasOnboard = isFieldValid('onboardingStartedDate', formData.onboardingStartedDate);
+           
+           if (hasPlatform && hasLink && hasOnboard) return { ready: true, target: 'Partner DB', label: 'Route to Partner DB' };
+           return { 
+               ready: false, 
+               missing: [!hasPlatform && 'Platform', !hasLink && 'Dash Link', !hasOnboard && 'Onboarding Date'].filter(Boolean),
+               label: 'Route to Partner DB'
+            };
+      } else {
+          // Default / B2B Logic
           const hasProduct = isFieldValid('productType', formData.productType);
           const hasPrint = isFieldValid('printType', formData.printType);
           const hasQty = (formData.estimatedQty || 0) > 0;
@@ -196,21 +187,7 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
               label: 'Route to OMS'
           };
       }
-      
-      if (i.includes('drop')) {
-           const hasPlatform = isFieldValid('platformType', formData.platformType);
-           const hasLink = formData.dashboardLinkSent === 'Yes';
-           const hasOnboard = isFieldValid('onboardingStartedDate', formData.onboardingStartedDate);
-           
-           if (hasPlatform && hasLink && hasOnboard) return { ready: true, target: 'Partner DB', label: 'Route to Partner DB' };
-           return { 
-               ready: false, 
-               missing: [!hasPlatform && 'Platform', !hasLink && 'Dash Link', !hasOnboard && 'Onboarding Date'].filter(Boolean),
-               label: 'Route to Partner DB'
-            };
-      }
-      return null;
-  }, [formData]);
+  }, [formData, isDS]);
 
   const performSave = useCallback(async (data: Lead) => {
       setSaveStatus('saving');
@@ -257,7 +234,6 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
            updates.firstResponseTime = todayStr;
       }
 
-      const cat = (formData.category || '').toLowerCase();
       const exactRule = autoActions.find(r => r.triggerStage.toLowerCase() === newStage.toLowerCase()); 
       
       if (exactRule) {
@@ -393,11 +369,11 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
           className: "bg-white text-sm" 
       };
 
-      if (['source', 'ydsPoc', 'priority', 'category', 'customerType', 'productType', 'printType', 'contactStatus', 'design', 'paymentUpdate', 'platformType', 'integrationReady', 'sampleRequired', 'sampleStatus', 'intent', 'workflowType', 'dashboardLinkSent'].includes(key)) {
+      if (['source', 'ydsPoc', 'priority', 'category', 'customerType', 'productType', 'printType', 'contactStatus', 'design', 'paymentUpdate', 'platformType', 'integrationReady', 'sampleRequired', 'sampleStatus', 'intent', 'workflowType', 'dashboardLinkSent', 'accountCreated', 'firstProductCreated'].includes(key)) {
           let opts = getOptionList(key);
           
           // Manual Fallbacks for hardcoded lists or booleans if missing from options
-          if (key === 'integrationReady' || key === 'sampleRequired' || key === 'dashboardLinkSent') opts = ['Yes', 'No'];
+          if (['integrationReady', 'sampleRequired', 'dashboardLinkSent', 'accountCreated', 'firstProductCreated'].includes(key)) opts = ['Yes', 'No'];
           if (key === 'intent' && opts.length === 0) opts = ['POD', 'B2B', 'Dropshipping', 'Unclear'];
 
           return <Select label={label} options={opts} value={formData[key] as string} onChange={(e) => handleChange(key, e.target.value)} {...commonProps} />;
@@ -405,7 +381,7 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
       if (key === 'orderInfo' || key === 'remarks') {
           return <Textarea label={label} value={formData[key] as string} onChange={(e) => handleChange(key, e.target.value)} rows={3} {...commonProps} />;
       }
-      if (key === 'onboardingStartedDate' || key === 'expectedCloseDate') {
+      if (['onboardingStartedDate', 'expectedCloseDate', 'activationDate'].includes(key)) {
           return (
               <div>
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>
@@ -516,35 +492,62 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
                      </div>
                 </div>
 
-                {/* Section C: Requirements & Specs (Dynamic based on Intent) */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-4">
-                         <ShoppingBag size={14} className="text-purple-500"/> Order Requirements & Forecast
-                     </h3>
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                         {/* Forecast Fields */}
-                         <div className="col-span-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-2">
-                            {renderField('estimatedQty', formData.intent?.toLowerCase().includes('b2b') ? 'Volume (Units)' : 'Est. Quantity')}
-                            {renderField('expectedCloseDate')}
+                {/* Section C: Workflow Context Modules (Replacing Generic Order Specs) */}
+                
+                {/* MODULE: Dropshipping Onboarding */}
+                {isDS ? (
+                    <div className="bg-indigo-50/50 rounded-xl border border-indigo-100 p-5 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Laptop size={16} className="text-indigo-600"/>
+                            <h3 className="text-xs font-bold text-indigo-800 uppercase tracking-wider">Dropship Onboarding</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                            {renderField('platformType')}
+                            {renderField('storeUrl')}
+                            {renderField('integrationReady')}
+                            {renderField('dashboardLinkSent')}
+                            {renderField('onboardingStartedDate')}
+                            {renderField('accountCreated')}
+                            {renderField('firstProductCreated')}
+                        </div>
+                    </div>
+                ) : isB2B ? (
+                    /* MODULE: B2B Production Specs */
+                    <div className="bg-blue-50/50 rounded-xl border border-blue-100 p-5 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Factory size={16} className="text-blue-600"/>
+                            <h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Production Scope</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                             {renderField('estimatedQty', 'Volume (Units)')}
+                             {renderField('productType')}
+                             {renderField('printType')}
+                             {renderField('workflowType')}
+                             {renderField('sampleRequired')}
+                             {renderField('sampleStatus')}
+                             {renderField('expectedCloseDate')}
+                        </div>
+                         <div className="mt-4">
+                            {renderField('orderInfo', 'Detailed Production Specs')}
+                        </div>
+                    </div>
+                ) : (
+                    /* MODULE: Standard/Generic Specs */
+                    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Package size={16} className="text-gray-500"/>
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Order Details</h3>
+                        </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                             {renderField('estimatedQty')}
+                             {renderField('productType')}
+                             {renderField('printType')}
                          </div>
-
-                         {/* Dynamic Field Rendering based on activeFields from intent */}
-                         {activeFields.map(field => {
-                             if (field === 'estimatedQty' || field === 'expectedCloseDate') return null; // Already rendered
-                             
-                             let label;
-                             if (field === 'orderInfo' && formData.intent?.toLowerCase().includes('b2b')) label = 'Event Timeline / Specs';
-                             
-                             if (field === 'orderInfo') return null; // Render separately below
-                             
-                             return <div key={field}>{renderField(field as keyof Lead, label)}</div>;
-                         })}
-                         
-                         <div className="md:col-span-2 lg:col-span-3">
-                            {renderField('orderInfo', formData.intent?.toLowerCase().includes('b2b') ? 'Event Timeline / Specs' : 'Detailed Specs / Requirements')}
-                         </div>
-                     </div>
-                </div>
+                         <div className="mt-4">
+                            {renderField('orderInfo')}
+                        </div>
+                    </div>
+                )}
 
                 {/* Section D: Notes & Timeline */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">

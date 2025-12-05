@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Plus, RefreshCw, WifiOff, LogIn, Filter, Search, List, Sun, Kanban, BarChart3, Settings } from 'lucide-react';
+import { Plus, RefreshCw, WifiOff, LogIn, Filter, Search, List, Sun, Kanban, BarChart3, Settings, Import } from 'lucide-react';
 import { Button } from './ui/Button';
 import { GoogleUser, AppOptions } from '../types';
 
@@ -11,8 +12,8 @@ interface HeaderProps {
   user: GoogleUser | null;
   loading: boolean;
   syncStatus: 'success' | 'error';
-  currentView: 'board' | 'list' | 'tasks' | 'reports' | 'settings';
-  onViewChange: (view: 'board' | 'list' | 'tasks' | 'reports' | 'settings') => void;
+  currentView: 'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'fetch';
+  onViewChange: (view: 'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'fetch') => void;
   
   // Search
   searchQuery: string;
@@ -47,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
             <h1 className="text-xl font-bold text-gray-800 tracking-tight hidden md:block">YDS Leads</h1>
             <h1 className="text-xl font-bold text-gray-800 tracking-tight md:hidden">YDS</h1>
             
-            <div className="hidden md:flex bg-gray-100 rounded-lg p-1 gap-1 overflow-x-auto no-scrollbar max-w-[300px] sm:max-w-none">
+            <div className="hidden md:flex bg-gray-100 rounded-lg p-1 gap-1 overflow-x-auto no-scrollbar max-w-[400px] sm:max-w-none">
                  <button 
                   onClick={() => onViewChange('tasks')}
                   className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'tasks' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
@@ -74,6 +75,12 @@ export const Header: React.FC<HeaderProps> = ({
                   className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'reports' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                   <BarChart3 size={14} /> <span className="hidden lg:inline">Reports</span>
+                </button>
+                <button 
+                  onClick={() => onViewChange('fetch')}
+                  className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'fetch' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Import size={14} /> <span className="hidden lg:inline">Fetch</span>
                 </button>
             </div>
         </div>

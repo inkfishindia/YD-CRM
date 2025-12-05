@@ -1,5 +1,5 @@
 
-import { Lead, LegendItem, ActivityLog, StageRule, SLARule, AutoActionRule, MessageTemplate, calculatePriority, fromSheetDate, toSheetDate } from '../types';
+import { Lead, LegendItem, ActivityLog, StageRule, SLARule, AutoActionRule, MessageTemplate, calculatePriority, fromSheetDate, toSheetDate, SHEET_IDS, formatDate } from '../types';
 
 // Mock Data Imports
 import { 
@@ -13,7 +13,7 @@ import {
 } from '../data/mock/mockData';
 
 // Configuration
-const DEFAULT_SPREADSHEET_ID = '1xfGsXrTU2RfYt56MqXeuXCqiHqAPp3Rh1LNKFryj_c4';
+const DEFAULT_SPREADSHEET_ID = SHEET_IDS.MAIN;
 const STORAGE_KEY_SHEET_ID = 'yds_sheet_id';
 const STORAGE_KEY_HEADER_MAP = 'yds_header_map';
 
@@ -41,6 +41,14 @@ export const SHEET_NAME_SLA_RULES = 'SLA Rules';
 export const SHEET_NAME_AUTO_ACTION = 'Auto Next Action';
 export const SHEET_NAME_TEMPLATES = 'Message Templates';
 
+// New Architecture Tabs
+export const SHEET_NAME_IDENTITY = 'YDS_LEAD_IDENTITY';
+export const SHEET_NAME_FLOW_B2B = 'FLOW_B2B';
+export const SHEET_NAME_FLOW_DROPSHIP = 'FLOW_DROPSHIP';
+export const SHEET_NAME_FLOW_D2C = 'FLOW_D2C';
+export const SHEET_NAME_FLOW_HISTORY = 'FLOW_STAGE_HISTORY';
+
+
 // Cache Configuration
 const CACHE_KEY = 'yds_system_data_v18'; 
 const CACHE_TTL = 1000 * 60 * 15; // 15 minutes
@@ -60,8 +68,8 @@ type HeaderMap = Record<string, number>;
 // 2.1 TKW LEAD SHEET (Primary) - Added expected_close_date at end
 export const HEADER_LEAD_CSV = `lead_id,date,source,employee_name,company_name,contact_person,number,email,city,order_information,estimated_qty,product_type,print_type,priority,category,yds_poc,status,stage,design,contact_status,payment_update,contact_attempts,last_contact_date,next_action,next_action_date,lost_reason,won_date,lost_date,sla_status,days_open,remarks,order_notes,last_attempt_date,assigned_to_history,reassign_reason,stale_date,created_at,updated_at,first_response_time,source_detail,sla_health,whatsapp_message,customer_type,action_overdue,stage_changed_date,platform_type,integration_ready,sample_required,sample_status,activation_date,workflow_type,store_url,account_created,dashboard_link_sent,designs_ready,first_product_created,onboarding_started_date,intent,tags,order_status,expected_close_date`;
 
-// 2.6 Activity Log
-export const HEADER_ACTIVITY_CSV = `log_id,lead_id,flow_type,activity_type,old_value,new_value,field_changed,notes,created_by,created_at,source,sla_status_at_event,intent_at_event,stage_at_event,owner_at_event,attachment_url,route_event,sample_event,system_rule_fired,checksum`;
+// 2.6 Activity Log - Updated Schema
+export const HEADER_ACTIVITY_CSV = `log_id,flow_id,yds_lead_id,flow_type,activity_type,old_value,new_value,field_changed,notes,created_by,created_at,source,sla_status_at_event,intent_at_event,stage_at_event,owner_at_event,attachment_url,route_event,sample_event,system_rule_fired,rule_name,rule_parameters,ip_address,user_agent,session_id,checksum`;
 
 // 2.7 Legend - Added probability
 export const HEADER_LEGEND_CSV = `list_name,value,display_order,color,is_default,is_active,probability`;
@@ -78,6 +86,157 @@ export const HEADER_AUTO_ACTION_CSV = `flow_type,stage,condition_key,condition_v
 // 2.12 Message Templates
 export const HEADER_TEMPLATES_CSV = `template_id,flow_type,stage,template_category,title,body,variables,is_active`;
 
+// NEW LAYERS - CSV DEFAULTS - Updated Schemas
+export const HEADER_IDENTITY_CSV = `lead_id,name,email,phone,company_name,city,source,source_detail,created_at`;
+
+export const HEADER_FLOW_B2B_CSV = `flow_id,yds_lead_id,source_id,ydsPoc,status,stage,estimated_qty,product_type,print_type,priority,contact_status,payment_update,next_action,next_action_date,expected_close_date,won_date,lost_date,lost_reason,created_at,created_by,stage_changed_date,stage_changed_by,last_contact_date,last_contact_type,remarks,intent,category,customer_type,sla_status,response_time_mins,time_in_stage_days,total_interactions,attachment_urls,checksum`;
+
+export const HEADER_FLOW_DROPSHIP_CSV = `flow_id,yds_lead_id,source_id,ydsPoc,status,stage,estimated_qty,product_type,print_type,priority,contact_status,payment_update,next_action,next_action_date,won_date,lost_date,lost_reason,created_at,created_by,stage_changed_date,stage_changed_by,last_contact_date,last_contact_type,remarks,platform_type,store_url,integration_ready,dashboard_link_sent,onboarding_started_date,account_created,first_product_created,activation_date,intent,sla_status,response_time_mins,time_in_stage_days,total_interactions,attachment_urls,checksum`;
+
+export const HEADER_FLOW_HISTORY_CSV = `history_id,flow_id,from_stage,to_stage,changed_by,timestamp,reason,notes`;
+
+// --- SOURCE CONFIGURATION (EXTERNAL SHEETS) ---
+export const SOURCE_CONFIG = {
+    TKW: {
+        id: SHEET_IDS.TKW,
+        name: 'TKW Leads',
+        sheetName: 'Sheet1',
+        headers: [
+            'lead_id', 'DATE', 'Source', 'EMPLOYEE NAME', 'company_name',
+            'Contact person', 'NUMBER', 'email', 'city', 'ORDER INFORMATION',
+            'Est Qty', 'product_type', 'print_type', 'REMARKS', 'ORDER STATUS', 'YDC - Status'
+        ]
+    },
+    COMMERCE: {
+        id: SHEET_IDS.ODC, // Commerce / ODC
+        name: 'Commerce Leads',
+        sheetName: 'Sheet1',
+        headers: [
+            'Date', 'Time', 'Business Name', 'First Name', 'Last Name', 'Phone', 'Email',
+            'Address Line1', 'Address Line2', 'Country', 'Pincode', 'City', 'State',
+            'YDS Call Status', 'Already Selling', '**BLANK**', 'Where', 'Currently using',
+            'Website/Social URL', 'GST Registered', 'New/Experienced', 'Next Follow Up',
+            'YDS Lead Status', 'YDS Comments', 'COMMM Call Status', 'Lead Status',
+            'COMMM Comments', 'source_id', 'Full name', 'yds_lead_id'
+        ]
+    },
+    DS: {
+        id: SHEET_IDS.SLK, // DS / SLK
+        name: 'Dropship Leads',
+        sheetName: 'Sheet1',
+        headers: [
+            'Source_Lead_id', 'Lead Name', 'Source', 'Date', 'Company / brand',
+            'Phone / WhatsApp', 'Email', 'Requirement (verbatim)', 'Sent By',
+            'YDC - Status', 'Lead category', 'Brand', 'Comments', 'Last attempt type',
+            'Last attempt date', 'Allocated to', 'yds_lead_id'
+        ]
+    },
+    PARTNERS: {
+        id: SHEET_IDS.PARTNERS,
+        name: 'YDS Partners',
+        sheetName: 'Active partners',
+        headers: [
+            'Date', 'Name', 'Brand Name', 'GSTIN', 'Mobile Number', 'Email Address', 
+            'Address Line 1', 'Address Line 2', 'City', 'State', 'Country', 'Pincode', 
+            'status', 'Published', 'Create YDS partner page', 'Show on YDS partners list', 
+            'Login Required To Purchase', 'Shipping Preference', 'Skip Partner Invoice', 
+            'Allow Zero Commission'
+        ]
+    }
+};
+
+// --- DATA MAPPING UTILITY ---
+export const mapExternalRowToLead = (row: Record<string, string>, sourceType: 'TKW' | 'COMMERCE' | 'DS' | 'PARTNERS'): Partial<Lead> => {
+    const data: Partial<Lead> = {};
+
+    if (sourceType === 'TKW') {
+        data.leadId = row['lead_id'];
+        data.date = fromSheetDate(row['DATE']);
+        data.source = row['Source'];
+        data.employeeName = row['EMPLOYEE NAME'];
+        data.companyName = row['company_name'];
+        data.contactPerson = row['Contact person'];
+        data.number = row['NUMBER'];
+        data.email = row['email'];
+        data.city = row['city'];
+        data.orderInfo = row['ORDER INFORMATION'];
+        data.estimatedQty = parseInt(row['Est Qty']) || 0;
+        data.productType = row['product_type'];
+        data.printType = row['print_type'];
+        data.remarks = row['REMARKS'];
+        data.orderStatus = row['ORDER STATUS'];
+        data.status = row['YDC - Status'];
+    } 
+    else if (sourceType === 'COMMERCE') {
+        data.leadId = row['yds_lead_id'] || row['source_id'];
+        data.date = fromSheetDate(row['Date']);
+        data.companyName = row['Business Name'];
+        data.contactPerson = `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || row['Full name'];
+        data.number = row['Phone'];
+        data.email = row['Email'];
+        data.city = row['City'];
+        data.storeUrl = row['Website/Social URL'];
+        data.status = row['YDS Lead Status'];
+        data.remarks = row['YDS Comments'];
+    }
+    else if (sourceType === 'DS') {
+        data.leadId = row['yds_lead_id'] || row['Source_Lead_id'];
+        data.contactPerson = row['Lead Name'];
+        data.source = row['Source'];
+        data.date = fromSheetDate(row['Date']);
+        data.companyName = row['Company / brand'] || row['Brand'];
+        data.number = row['Phone / WhatsApp'];
+        data.email = row['Email'];
+        data.orderInfo = row['Requirement (verbatim)'];
+        data.employeeName = row['Sent By'];
+        data.status = row['YDC - Status'];
+        data.category = row['Lead category'];
+        data.remarks = row['Comments'];
+        data.ydsPoc = row['Allocated to'];
+    }
+    else if (sourceType === 'PARTNERS') {
+         data.leadId = `PTR-${row['GSTIN'] || Math.floor(Math.random() * 10000)}`;
+         data.date = fromSheetDate(row['Date']);
+         data.companyName = row['Brand Name'];
+         data.contactPerson = row['Name'];
+         data.number = row['Mobile Number'];
+         data.email = row['Email Address'];
+         data.city = row['City'];
+         data.status = row['status'];
+         data.source = 'YDS Partners';
+         data.category = 'Partner';
+         data.sourceDetail = `GST: ${row['GSTIN'] || 'N/A'}`;
+    }
+
+    return data;
+};
+
+// --- MOCK SOURCE DATA FOR PREVIEW ---
+const getMockSourceData = (key: keyof typeof SOURCE_CONFIG) => {
+    const today = formatDate();
+    if (key === 'TKW') {
+        return [
+            ['lead_id', 'DATE', 'Source', 'EMPLOYEE NAME', 'company_name', 'Contact person', 'NUMBER', 'email', 'city', 'ORDER INFORMATION', 'Est Qty', 'product_type', 'print_type', 'REMARKS', 'ORDER STATUS', 'YDC - Status'],
+            [`TKW-${Date.now()}-1`, today, 'Vendor', 'MockUser', 'Alpha Designs', 'Rahul S', '9876543210', 'rahul@alpha.com', 'Mumbai', '50 T-shirts needed', '50', 'T-Shirt', 'DTF', 'Urgent', 'Open', 'New'],
+            [`TKW-${Date.now()}-2`, today, 'Walk-in', 'MockUser', 'Beta Corp', 'Simran K', '9123456780', 'sim@beta.com', 'Delhi', 'Hoodies for team', '20', 'Hoodie', 'Puff', '', 'Pending', 'Qualified']
+        ];
+    }
+    if (key === 'COMMERCE') {
+        return [
+            ['Date', 'Time', 'Business Name', 'First Name', 'Last Name', 'Phone', 'Email', 'Address Line1', 'Address Line2', 'Country', 'Pincode', 'City', 'State', 'YDS Call Status', 'Already Selling', '**BLANK**', 'Where', 'Currently using', 'Website/Social URL', 'GST Registered', 'New/Experienced', 'Next Follow Up', 'YDS Lead Status', 'YDS Comments', 'COMMM Call Status', 'Lead Status', 'COMMM Comments', 'source_id', 'Full name', 'yds_lead_id'],
+            [today, '10:00', 'Gamer Gear', 'Vikram', 'Rathore', '9988776655', 'vikram@gg.com', 'Flat 101', 'Street 2', 'India', '560001', 'Bangalore', 'KA', 'Connected', 'Yes', '', 'Shopify', 'Printrove', 'gamergear.in', 'Yes', 'Experienced', '', 'New', 'Wants better margins', '', '', '', 'COMM-101', 'Vikram Rathore', `COM-${Date.now()}-1`]
+        ];
+    }
+    if (key === 'DS') {
+        return [
+            ['Source_Lead_id', 'Lead Name', 'Source', 'Date', 'Company / brand', 'Phone / WhatsApp', 'Email', 'Requirement (verbatim)', 'Sent By', 'YDC - Status', 'Lead category', 'Brand', 'Comments', 'Last attempt type', 'Last attempt date', 'Allocated to', 'yds_lead_id'],
+            ['DS-SOURCE-1', 'Anjali P', 'Instagram', today, 'Style My Way', '8899776655', 'anjali@style.com', 'Looking for POD supplier', 'Ads', 'New', 'Dropshipping', 'Style My Way', 'Has 10k followers', '', '', 'Unassigned', `DS-${Date.now()}-1`]
+        ];
+    }
+    return [];
+};
+
+// ... (Rest of auth and config code unchanged until fetchSystemData) ...
 
 // Auth State
 let accessToken: string | null = null;
@@ -91,8 +250,6 @@ export const setAccessToken = (token: string | null) => {
 const getCol = (row: any[], idx: number) => (row[idx] !== undefined && row[idx] !== null) ? String(row[idx]).trim() : '';
 
 // --- DYNAMIC HEADER MAPPING HELPERS (SECTION 3) ---
-
-// 3.3 Normalize Header Function (Mandatory Regex)
 const normalizeHeader = (header: string) => {
   return header
     .toLowerCase()
@@ -128,19 +285,16 @@ const saveHeaderMap = (map: HeaderMap) => {
   }
 };
 
-// Diagnostics Helper Interface
 export interface SchemaReport {
     sheetName: string;
     status: 'ok' | 'missing_sheet' | 'missing_headers';
     missingColumns: string[];
 }
 
-// Full Diagnostic Tool
 export const diagnoseSheetStructure = async (): Promise<SchemaReport[]> => {
     if (!accessToken || !window.gapi?.client?.sheets) {
         throw new Error("Must be logged in to run diagnostics.");
     }
-    
     const sheetId = getSpreadsheetId();
     const definitions = [
         { name: SHEET_NAME_LEADS, expected: HEADER_LEAD_CSV },
@@ -151,17 +305,12 @@ export const diagnoseSheetStructure = async (): Promise<SchemaReport[]> => {
         { name: SHEET_NAME_AUTO_ACTION, expected: HEADER_AUTO_ACTION_CSV },
         { name: SHEET_NAME_TEMPLATES, expected: HEADER_TEMPLATES_CSV },
     ];
-
     const reports: SchemaReport[] = [];
-
     try {
-        // 1. Check Sheet Existence via Metadata
         const meta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: sheetId });
         const existingTitles = (meta.result.sheets || []).map((s: any) => s.properties.title);
-
         const rangesToFetch: string[] = [];
         const validSheets: typeof definitions = [];
-
         definitions.forEach(def => {
             if (!existingTitles.includes(def.name)) {
                 reports.push({
@@ -174,8 +323,6 @@ export const diagnoseSheetStructure = async (): Promise<SchemaReport[]> => {
                 validSheets.push(def);
             }
         });
-
-        // 2. Check Headers (Batch Get Row 1)
         if (rangesToFetch.length > 0) {
             const resp = await window.gapi.client.sheets.spreadsheets.values.batchGet({
                 spreadsheetId: sheetId,
@@ -183,16 +330,12 @@ export const diagnoseSheetStructure = async (): Promise<SchemaReport[]> => {
                 majorDimension: 'ROWS',
                 valueRenderOption: 'UNFORMATTED_VALUE',
             });
-
             const valueRanges = resp.result.valueRanges || [];
-
             validSheets.forEach((def, idx) => {
                 const range = valueRanges[idx];
                 const actualHeaders = (range?.values?.[0] || []).map((h: string) => normalizeHeader(String(h)));
                 const expectedHeaders = def.expected.split(',').map(h => normalizeHeader(h));
-                
                 const missing = expectedHeaders.filter(req => !actualHeaders.includes(req));
-
                 if (missing.length > 0) {
                     reports.push({
                         sheetName: def.name,
@@ -208,42 +351,32 @@ export const diagnoseSheetStructure = async (): Promise<SchemaReport[]> => {
                 }
             });
         }
-
         return reports;
-
     } catch (e: any) {
         console.error("Diagnostic Error", e);
         throw new Error(e.message || "Failed to run diagnostics");
     }
 };
 
-// Deprecated simple check (kept for fallback)
 export const validateSheetSchema = (): { valid: boolean, missing: string[] } => {
     const map = getHeaderMap();
     if (!map) return { valid: false, missing: ['No header map found (Sync required)'] };
-    
     const required = HEADER_LEAD_CSV.split(',');
     const missing: string[] = [];
-    
     required.forEach(req => {
         if (map[normalizeHeader(req)] === undefined) missing.push(req);
     });
-
     return { valid: missing.length === 0, missing };
 };
 
-// --- Helper: Convert Lead Object to Sheet Row Array ---
 const leadToRowArray = (lead: Lead, map: HeaderMap): string[] => {
   const maxIndex = Math.max(...Object.values(map));
   const row: string[] = Array(maxIndex + 1).fill("");
-
   const set = (key: string, value: any) => {
     const normalizedKey = normalizeHeader(key); 
     const idx = map[normalizedKey];
     if (idx !== undefined) row[idx] = value ?? "";
   };
-
-  // Mappings - Using strict normalized keys from Section 2.1
   set("lead_id", lead.leadId);
   set("date", toSheetDate(lead.date));
   set("source", lead.source);
@@ -305,21 +438,17 @@ const leadToRowArray = (lead: Lead, map: HeaderMap): string[] => {
   set("tags", lead.tags);
   set("order_status", lead.orderStatus);
   set("expected_close_date", toSheetDate(lead.expectedCloseDate));
-
   return row;
 };
 
-// --- CSV Parsing Helper ---
 const parseCSV = (text: string): string[][] => {
   const rows: string[][] = [];
   let currentRow: string[] = [];
   let currentVal = '';
   let insideQuote = false;
-  
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     const nextChar = text[i + 1];
-
     if (insideQuote) {
       if (char === '"' && nextChar === '"') {
         currentVal += '"';
@@ -358,28 +487,20 @@ const parseCSV = (text: string): string[][] => {
   return rows;
 };
 
-// --- Row Parsers ---
-// 3.2 Dynamic Row Parsing - NO FALLBACKS
 const parseLeadRow = (row: any[], index: number, map: HeaderMap): Lead => {
   const rowIndex = index + 2;
-  
-  // Safe Getter
   const get = (key: string) => {
       const normalizedKey = normalizeHeader(key);
       const idx = map[normalizedKey];
       if (idx === undefined || row[idx] === undefined || row[idx] === null) return '';
       return String(row[idx]).trim();
   };
-
   const parsedQty = parseInt(get('estimated_qty').replace(/,/g, '') || '0', 10);
   const estimatedQty = isNaN(parsedQty) ? 0 : parsedQty;
-  
   const rawPriority = get('priority');
   const priority = (rawPriority === '' || rawPriority.includes('Unset')) 
     ? calculatePriority(estimatedQty) 
     : rawPriority;
-
-  // Convert Sheet Dates (MM/DD/YYYY) to App Dates (DD/MM/YY)
   return {
     _rowIndex: rowIndex,
     leadId: get('lead_id'),
@@ -458,13 +579,13 @@ const parseLegendRow = (row: any[]): LegendItem => ({
 
 const parseActivityLog = (row: any[]): ActivityLog => ({
     logId: getCol(row, 0),
-    leadId: getCol(row, 1),
-    timestamp: getCol(row, 9), // Matches 2.6 created_at position
-    activityType: getCol(row, 3),
-    owner: getCol(row, 8), // created_by
-    fromValue: getCol(row, 4),
-    toValue: getCol(row, 5),
-    notes: getCol(row, 7)
+    leadId: getCol(row, 2), 
+    activityType: getCol(row, 4),
+    fromValue: getCol(row, 5), 
+    toValue: getCol(row, 6),   
+    notes: getCol(row, 8),
+    owner: getCol(row, 9),     
+    timestamp: getCol(row, 10), 
 });
 
 const parseStageRule = (row: any[]): StageRule => ({
@@ -480,14 +601,14 @@ const parseSLARule = (row: any[]): SLARule => ({
   ruleName: `${getCol(row, 1)} SLA`,
   stage: getCol(row, 1),
   condition: getCol(row, 2),
-  thresholdDays: parseInt(getCol(row, 4)) || 2, // sla_hours approx
+  thresholdDays: parseInt(getCol(row, 4)) || 2, 
   alertLevel: 'warning',
-  alertAction: getCol(row, 6) // overdue_label
+  alertAction: getCol(row, 6) 
 });
 
 const parseAutoAction = (row: any[]): AutoActionRule => ({
   triggerStage: getCol(row, 1),
-  defaultNextAction: getCol(row, 4), // next_action_type
+  defaultNextAction: getCol(row, 4), 
   defaultDays: parseInt(getCol(row, 6)) || 0
 });
 
@@ -496,12 +617,10 @@ const parseTemplate = (row: any[]): MessageTemplate => ({
   stage: getCol(row, 2),
   category: getCol(row, 3),
   infoLevel: 'Basic',
-  name: getCol(row, 4), // title
+  name: getCol(row, 4),
   body: getCol(row, 5),
   subject: getCol(row, 4)
 });
-
-// --- API Calls ---
 
 export interface SystemData {
   leads: Lead[];
@@ -518,10 +637,8 @@ export interface SystemData {
   error?: string;
 }
 
-// --- INITIALIZATION ---
 export const initializeSheetStructure = async (): Promise<{success: boolean, message: string}> => {
   if (!accessToken || !window.gapi?.client?.sheets) return { success: false, message: 'Not authenticated' };
-  
   const sheetId = getSpreadsheetId();
   const requiredSheets = [
       { title: SHEET_NAME_LEADS, defaultCsv: HEADER_LEAD_CSV },
@@ -531,15 +648,16 @@ export const initializeSheetStructure = async (): Promise<{success: boolean, mes
       { title: SHEET_NAME_SLA_RULES, defaultCsv: HEADER_SLA_RULES_CSV },
       { title: SHEET_NAME_AUTO_ACTION, defaultCsv: HEADER_AUTO_ACTION_CSV },
       { title: SHEET_NAME_TEMPLATES, defaultCsv: HEADER_TEMPLATES_CSV },
+      { title: SHEET_NAME_IDENTITY, defaultCsv: HEADER_IDENTITY_CSV },
+      { title: SHEET_NAME_FLOW_B2B, defaultCsv: HEADER_FLOW_B2B_CSV },
+      { title: SHEET_NAME_FLOW_DROPSHIP, defaultCsv: HEADER_FLOW_DROPSHIP_CSV },
+      { title: SHEET_NAME_FLOW_HISTORY, defaultCsv: HEADER_FLOW_HISTORY_CSV },
   ];
-
   try {
       const meta = await window.gapi.client.sheets.spreadsheets.get({ spreadsheetId: sheetId });
       const existingTitles = (meta.result.sheets || []).map((s: any) => s.properties.title);
-      
       const requests: any[] = [];
       const dataToPopulate: { range: string, values: any[][] }[] = [];
-
       requiredSheets.forEach(req => {
           if (!existingTitles.includes(req.title)) {
               requests.push({ addSheet: { properties: { title: req.title } } });
@@ -547,14 +665,12 @@ export const initializeSheetStructure = async (): Promise<{success: boolean, mes
               dataToPopulate.push({ range: `${req.title}!A1`, values: rows });
           }
       });
-
       if (requests.length > 0) {
           await window.gapi.client.sheets.spreadsheets.batchUpdate({
               spreadsheetId: sheetId,
               resource: { requests }
           });
       }
-
       if (dataToPopulate.length > 0) {
           await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
               spreadsheetId: sheetId,
@@ -565,17 +681,12 @@ export const initializeSheetStructure = async (): Promise<{success: boolean, mes
           });
           return { success: true, message: `Created ${requests.length} missing sheets.` };
       }
-      
       return { success: true, message: 'Structure Verified. No changes needed.' };
-
   } catch (e: any) {
       console.error("Init Error", e);
       return { success: false, message: e.message || "Initialization failed" };
   }
 };
-
-
-// --- LOCAL STORAGE DATABASE MANAGER ---
 
 const getLocalDB = (): SystemData => {
     try {
@@ -586,15 +697,11 @@ const getLocalDB = (): SystemData => {
     } catch (e) {
         console.warn("Failed to read local DB", e);
     }
-
-    // Initialize from MOCK JSONs if no DB exists (State 3: Mock Data)
     console.log("Initializing DB from Mock JSONs...");
-
-    // 1. Leads
     const leads = (MOCK_LEADS as any[]).map((m: any, idx: number) => ({
         _rowIndex: idx + 2,
         leadId: m.lead_id,
-        date: fromSheetDate(m.date), // Convert Mock ISO/Sheet date to App Date
+        date: fromSheetDate(m.date),
         source: m.source,
         employeeName: m.employee_name,
         companyName: m.company_name,
@@ -609,7 +716,7 @@ const getLocalDB = (): SystemData => {
         priority: m.priority === 'P1' ? '🔴 High' : m.priority === 'P2' ? '🟡 Med' : '🟢 Low',
         category: m.category,
         ydsPoc: m.yds_poc,
-        status: m.stage, // Mapping mock 'stage' to app 'status' (Pipeline Stage)
+        status: m.stage, 
         stage: m.stage,
         design: m.design,
         contactStatus: m.contact_status,
@@ -655,20 +762,14 @@ const getLocalDB = (): SystemData => {
         orderStatus: '',
         expectedCloseDate: ''
     })) as unknown as Lead[];
-
-    // 2. Legends
     const legends: LegendItem[] = [];
-    
-    // Ensure missing mocks exist so dropdowns are populated
     const extendedMocks = {
         ...MOCK_LEGENDS,
-        // Populate defaults if missing from mock data
         customer_type_list: (MOCK_LEGENDS as any).customer_type_list || ["New", "Returning", "VIP", "Reseller"],
         platform_type_list: (MOCK_LEGENDS as any).platform_type_list || ["Shopify", "WooCommerce", "Wix", "Manual"],
         sample_status_list: (MOCK_LEGENDS as any).sample_status_list || ["Requested", "Sent", "Feedback Received", "Approved", "Rejected"],
         design_status_list: (MOCK_LEGENDS as any).design_status_list || ["Pending", "Received", "Approved", "Modification Needed"]
     };
-
     const stageProbabilities: Record<string, number> = {
         'New': 10,
         'Assigned': 15,
@@ -680,15 +781,12 @@ const getLocalDB = (): SystemData => {
         'Won': 100,
         'Lost': 0
     };
-
     Object.entries(extendedMocks).forEach(([key, values]) => {
         let listName = key.replace('_list', '');
-        // Mapping corrections
         if (listName === 'status') listName = 'status_legacy'; 
         if (listName === 'stage') listName = 'stage'; 
         if (listName === 'contact_status') listName = 'contact_status';
         if (listName === 'payment_update') listName = 'payment_update'; 
-
         (values as string[]).forEach((val, idx) => {
             const prob = listName === 'stage' ? (stageProbabilities[val] || 0) : 0;
             legends.push({
@@ -702,8 +800,6 @@ const getLocalDB = (): SystemData => {
             });
         });
     });
-
-    // Add Default Catalogs (Feature for Templates)
     const defaultCatalogs = [
         { name: "2025 Product Catalog", url: "https://example.com/catalog-2025" },
         { name: "Price List v3", url: "https://example.com/prices-v3.pdf" }
@@ -713,15 +809,12 @@ const getLocalDB = (): SystemData => {
             listName: 'catalog_link',
             value: cat.name,
             displayOrder: idx + 1,
-            color: cat.url, // Storing URL in color field
+            color: cat.url, 
             isDefault: false,
             isActive: true,
             probability: 0
         });
     });
-
-
-    // 3. Stage Rules
     const stageRules: StageRule[] = [];
     (MOCK_STAGE_RULES as any[]).forEach((rule: any) => {
         const nextStages = rule.next_allowed_stages || [];
@@ -733,13 +826,11 @@ const getLocalDB = (): SystemData => {
                 autoSetField: rule.auto_assign_to ? 'ydsPoc' : '',
                 autoSetValue: rule.auto_assign_to || '',
                 requiresField: (rule.required_fields || []).map((f: string) => 
-                    f.replace(/_([a-z])/g, (g) => g[1].toUpperCase()) // snake to camel
+                    f.replace(/_([a-z])/g, (g) => g[1].toUpperCase()) 
                 )
             });
         });
     });
-
-    // 4. SLA Rules
     const slaRules: SLARule[] = (MOCK_SLA_RULES as any[]).map((rule: any) => ({
         ruleName: `${rule.stage} SLA`,
         stage: rule.stage,
@@ -748,15 +839,11 @@ const getLocalDB = (): SystemData => {
         alertLevel: (rule.escalation_level || 'Low').toLowerCase() === 'high' ? 'critical' : 'warning',
         alertAction: 'Check Lead'
     }));
-
-    // 5. Auto Actions
     const autoActions: AutoActionRule[] = (MOCK_AUTO_ACTIONS as any[]).map((rule: any) => ({
         triggerStage: rule.stage,
         defaultNextAction: rule.next_action,
         defaultDays: rule.days_to_followup
     }));
-
-    // 6. Templates
     const templates: MessageTemplate[] = (MOCK_TEMPLATES as any[]).map((t: any) => ({
         id: t.id || `tpl_${Math.random()}`,
         name: t.name || t.action,
@@ -766,8 +853,6 @@ const getLocalDB = (): SystemData => {
         subject: t.subject || t.action,
         body: t.body || t.template_text
     }));
-
-    // 7. Activity Log
     const activityLogs: ActivityLog[] = (MOCK_ACTIVITY as any[]).map((l: any) => ({
         logId: l.log_id || `log_${Math.random()}`,
         leadId: l.lead_id,
@@ -778,7 +863,6 @@ const getLocalDB = (): SystemData => {
         toValue: l.new_value,
         notes: l.notes
     }));
-
     const initialData: SystemData = {
         leads, 
         legends, 
@@ -789,80 +873,51 @@ const getLocalDB = (): SystemData => {
         activityLogs, 
         success: true,
         dataSource: 'local',
-        readOnly: true // Default to read-only for mock/local data until session starts
+        readOnly: true 
     };
-
     try {
         localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(initialData));
     } catch(e) { console.warn("Failed to init local DB", e); }
-
     return initialData;
 };
 
-// --- NEW FUNCTION: POPULATE CONFIG DEFAULTS ---
 export const populateConfigData = async (): Promise<{success: boolean, message: string}> => {
     if (!accessToken || !window.gapi?.client?.sheets) return { success: false, message: 'Not authenticated' };
-    
-    // 1. Get Default Data (reusing local DB logic which loads from Mocks)
     const defaults = getLocalDB();
     const sheetId = getSpreadsheetId();
-
     const dataToPopulate: { range: string, values: any[][] }[] = [];
-
-    // 2. Prepare Data Arrays (matching columns in HEADER_..._CSV)
-    
-    // Legends
-    // list_name,value,display_order,color,is_default,is_active,probability
     const legendRows = defaults.legends.map(l => [
         l.listName, l.value, l.displayOrder, l.color, l.isDefault, l.isActive, l.probability
     ]);
     if (legendRows.length > 0) {
         dataToPopulate.push({ range: `${SHEET_NAME_LEGEND}!A2`, values: legendRows });
     }
-
-    // Stage Rules
-    // flow_type,from_stage,to_stage,trigger,auto_set_field,auto_set_value,requires_field...
     const ruleRows = defaults.stageRules.map(r => [
         'General', r.fromStage, r.toStage, r.trigger, r.autoSetField, r.autoSetValue, r.requiresField.join('|'), '', '', '', '', 'TRUE'
     ]);
     if (ruleRows.length > 0) {
         dataToPopulate.push({ range: `${SHEET_NAME_STAGE_RULES}!A2`, values: ruleRows });
     }
-
-    // SLA Rules
-    // flow_type,stage,condition_key,condition_value,sla_hours,warning_hours...
     const slaRows = defaults.slaRules.map(r => [
         'General', r.stage, r.condition, '', r.thresholdDays * 24, '', r.alertAction, '', '', 'TRUE'
     ]);
     if (slaRows.length > 0) {
          dataToPopulate.push({ range: `${SHEET_NAME_SLA_RULES}!A2`, values: slaRows });
     }
-
-    // Auto Actions
-    // flow_type,stage,condition_key,condition_value,next_action_type...
     const actionRows = defaults.autoActions.map(r => [
         'General', r.triggerStage, '', '', r.defaultNextAction, '', r.defaultDays, 'TRUE'
     ]);
     if (actionRows.length > 0) {
          dataToPopulate.push({ range: `${SHEET_NAME_AUTO_ACTION}!A2`, values: actionRows });
     }
-
-    // Templates
-    // template_id,flow_type,stage,template_category,title,body...
     const templateRows = defaults.templates.map(t => [
         t.id, 'General', t.stage, t.category, t.name, t.body, '', 'TRUE'
     ]);
     if (templateRows.length > 0) {
          dataToPopulate.push({ range: `${SHEET_NAME_TEMPLATES}!A2`, values: templateRows });
     }
-
-    // 3. Execute Write
     try {
         if (dataToPopulate.length > 0) {
-             // Optional: Clear existing config first? Maybe safer to append or overwrite from A2
-             // We are using A2, so it overwrites from top. Ideally we clear range first.
-             
-             // Quick Clear loop
              for (const item of dataToPopulate) {
                  const sheetName = item.range.split('!')[0];
                  await window.gapi.client.sheets.spreadsheets.values.clear({
@@ -870,7 +925,6 @@ export const populateConfigData = async (): Promise<{success: boolean, message: 
                      range: `${sheetName}!A2:Z1000`
                  });
              }
-
              await window.gapi.client.sheets.spreadsheets.values.batchUpdate({
                   spreadsheetId: sheetId,
                   resource: {
@@ -905,7 +959,6 @@ export const resetLocalData = () => {
     window.location.reload();
 };
 
-
 export const fetchSystemData = async (forceRefresh = false): Promise<SystemData> => {
   let cloudError = null;
   const sheetId = getSpreadsheetId();
@@ -918,21 +971,14 @@ export const fetchSystemData = async (forceRefresh = false): Promise<SystemData>
       SHEET_NAME_AUTO_ACTION,
       SHEET_NAME_TEMPLATES
   ];
-
-  // Helper to process value ranges
   const processValueRanges = (valueRanges: any[]) => {
         const leadSheet = valueRanges[0].values || [];
         const leadHeaderRow = leadSheet[0] || [];
         const headerMap = buildHeaderIndexMap(leadHeaderRow);
-        
-        // Save dynamically map for write operations
         saveHeaderMap(headerMap);
-
         const leads = leadSheet.slice(1).map((r: any[], i: number) => parseLeadRow(r, i, headerMap)).filter((l: Lead) => l.leadId);
-        
         const rawLegends = (valueRanges[1]?.values || []).slice(1);
         let legends = rawLegends.map(parseLegendRow);
-        
         if (legends.length === 0) {
              legends = [
                  { listName: 'stage', value: 'New', displayOrder: 1, color: '', isDefault: true, isActive: true, probability: 10 },
@@ -947,13 +993,11 @@ export const fetchSystemData = async (forceRefresh = false): Promise<SystemData>
                  { listName: 'owner', value: 'Admin', displayOrder: 1, color: '', isDefault: true, isActive: true, probability: 0 }
              ];
         }
-
         const activityLogs = (valueRanges[2]?.values || []).slice(1).map(parseActivityLog);
         const stageRules = (valueRanges[3]?.values || []).slice(1).map(parseStageRule);
         const slaRules = (valueRanges[4]?.values || []).slice(1).map(parseSLARule);
         const autoActions = (valueRanges[5]?.values || []).slice(1).map(parseAutoAction);
         const templates = (valueRanges[6]?.values || []).slice(1).map(parseTemplate);
-
         return {
             leads: leads.reverse(),
             legends,
@@ -964,8 +1008,6 @@ export const fetchSystemData = async (forceRefresh = false): Promise<SystemData>
             templates
         };
   };
-
-  // 1. Check Cache
   if (!forceRefresh) {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -979,8 +1021,6 @@ export const fetchSystemData = async (forceRefresh = false): Promise<SystemData>
           }
       }
   }
-
-  // 2. STATE 1: OAuth (Authenticated)
   if (accessToken && window.gapi?.client?.sheets) {
       try {
         const resp = await window.gapi.client.sheets.spreadsheets.values.batchGet({
@@ -989,58 +1029,42 @@ export const fetchSystemData = async (forceRefresh = false): Promise<SystemData>
           majorDimension: 'ROWS',
           valueRenderOption: 'UNFORMATTED_VALUE',
         });
-
         const data = processValueRanges(resp.result.valueRanges);
-        
         const systemData: SystemData = {
             ...data,
             success: true,
             dataSource: 'cloud',
             readOnly: false
         };
-
         localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: systemData }));
         return systemData;
-
       } catch (err: any) {
         console.error("Cloud Auth Fetch Error", err);
         cloudError = err.result?.error?.message || err.message;
-        // Don't return, fall through to try public
       }
   }
-
-  // 3. STATE 2: Public API Key (Read Only)
-  // Check if API_KEY is present
   if (process.env.API_KEY) {
       try {
           const rangeParams = ranges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
           const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?key=${process.env.API_KEY}&${rangeParams}&valueRenderOption=UNFORMATTED_VALUE&majorDimension=ROWS`;
-          
           const response = await fetch(url);
           if (!response.ok) {
               throw new Error(`Public API Error: ${response.status} ${response.statusText}`);
           }
-          
           const result = await response.json();
           const data = processValueRanges(result.valueRanges);
-
           const systemData: SystemData = {
              ...data,
              success: true,
              dataSource: 'cloud',
-             readOnly: true // Public access is always read-only via key
+             readOnly: true 
           };
-          
           localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: systemData }));
           return systemData;
-
       } catch (err: any) {
            console.warn("Public Read Failed", err);
-           // Fall through to State 3
       }
   }
-
-  // 4. STATE 3: Mock/Local Fallback
   console.log("Using Fallback Mock Data");
   return { ...getLocalDB(), error: cloudError, dataSource: 'local', readOnly: true };
 };
@@ -1051,9 +1075,7 @@ export const addLead = async (lead: Partial<Lead>): Promise<boolean> => {
         const sheetId = getSpreadsheetId();
         const headerMap = getHeaderMap();
         if (!headerMap) throw new Error("Header Map missing");
-
         const row = leadToRowArray(lead as Lead, headerMap);
-
         await window.gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: sheetId,
             range: SHEET_NAME_LEADS,
@@ -1066,7 +1088,6 @@ export const addLead = async (lead: Partial<Lead>): Promise<boolean> => {
         return false;
     }
   } else {
-      // Local Mode (In-memory update for session)
       const db = getLocalDB();
       const newLead = { ...lead, _rowIndex: db.leads.length + 2 } as Lead;
       db.leads.unshift(newLead);
@@ -1081,10 +1102,8 @@ export const updateLead = async (lead: Lead): Promise<boolean> => {
             const sheetId = getSpreadsheetId();
             const headerMap = getHeaderMap();
             if (!headerMap) throw new Error("Header Map missing");
-
             const row = leadToRowArray(lead, headerMap);
             const range = `${SHEET_NAME_LEADS}!A${lead._rowIndex}`; 
-            
             await window.gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: sheetId,
                 range: range,
@@ -1097,7 +1116,6 @@ export const updateLead = async (lead: Lead): Promise<boolean> => {
             return false;
         }
     } else {
-        // Local Mode
         const db = getLocalDB();
         const idx = db.leads.findIndex(l => l.leadId === lead.leadId);
         if (idx !== -1) {
@@ -1110,11 +1128,9 @@ export const updateLead = async (lead: Lead): Promise<boolean> => {
 };
 
 export const addActivityLog = async (log: ActivityLog): Promise<boolean> => {
-    // Note: Activity log follows 2.6 schema
-    // log_id,lead_id,flow_type,activity_type,old_value,new_value,field_changed,notes,created_by,created_at...
-    // Simplified for now based on available data
-    const row = [log.logId, log.leadId, 'General', log.activityType, log.fromValue, log.toValue, '', log.notes, log.owner, log.timestamp];
-    
+    const row = [
+        log.logId, '', log.leadId, 'General', log.activityType, log.fromValue, log.toValue, '', log.notes, log.owner, log.timestamp, 'App', '', '', '', log.owner,
+    ];
     if (accessToken && window.gapi?.client?.sheets) {
         try {
             await window.gapi.client.sheets.spreadsheets.values.append({
@@ -1141,7 +1157,6 @@ const saveConfigSheet = async (sheetName: string, values: any[][]) => {
                 spreadsheetId: sheetId,
                 range: `${sheetName}!A2:Z1000`
             });
-
             if (values.length > 0) {
                 await window.gapi.client.sheets.spreadsheets.values.append({
                     spreadsheetId: sheetId,
@@ -1159,7 +1174,6 @@ const saveConfigSheet = async (sheetName: string, values: any[][]) => {
 
 export const saveLegends = async (legends: LegendItem[]) => {
     if (accessToken) {
-        // Updated to include probability column
         const rows = legends.map(l => [l.listName, l.value, l.displayOrder, l.color, l.isDefault, l.isActive, l.probability]);
         await saveConfigSheet(SHEET_NAME_LEGEND, rows);
     } else {
@@ -1171,7 +1185,6 @@ export const saveLegends = async (legends: LegendItem[]) => {
 
 export const saveStageRules = async (rules: StageRule[]) => {
     if (accessToken) {
-        // Mapping to 2.8 format: flow_type, from, to...
         const rows = rules.map(r => ['General', r.fromStage, r.toStage, r.trigger, r.autoSetField, r.autoSetValue, r.requiresField.join('|')]);
         await saveConfigSheet(SHEET_NAME_STAGE_RULES, rows);
     } else {
@@ -1183,7 +1196,6 @@ export const saveStageRules = async (rules: StageRule[]) => {
 
 export const saveSLARules = async (rules: SLARule[]) => {
     if (accessToken) {
-        // Mapping to 2.10 format
         const rows = rules.map(r => ['General', r.stage, r.condition, '', r.thresholdDays, '', r.alertAction, '', '', 'TRUE']);
         await saveConfigSheet(SHEET_NAME_SLA_RULES, rows);
     } else {
@@ -1195,7 +1207,6 @@ export const saveSLARules = async (rules: SLARule[]) => {
 
 export const saveAutoActions = async (rules: AutoActionRule[]) => {
     if (accessToken) {
-        // Mapping to 2.11 format
         const rows = rules.map(r => ['General', r.triggerStage, '', '', r.defaultNextAction, '', r.defaultDays, 'TRUE']);
         await saveConfigSheet(SHEET_NAME_AUTO_ACTION, rows);
     } else {
@@ -1207,7 +1218,6 @@ export const saveAutoActions = async (rules: AutoActionRule[]) => {
 
 export const saveTemplates = async (tpls: MessageTemplate[]) => {
     if (accessToken) {
-        // Mapping to 2.12 format
         const rows = tpls.map(t => [t.id, 'General', t.stage, t.category, t.name, t.body, '', 'TRUE']);
         await saveConfigSheet(SHEET_NAME_TEMPLATES, rows);
     } else {
@@ -1215,4 +1225,108 @@ export const saveTemplates = async (tpls: MessageTemplate[]) => {
         db.templates = tpls;
         saveLocalDB(db);
     }
+};
+
+export const fetchRemoteHeaders = async (spreadsheetId: string, sheetName: string = 'Sheet1'): Promise<{ headers: string[], error?: string }> => {
+    if (!accessToken || !window.gapi?.client?.sheets) {
+        return { headers: [], error: 'Not authenticated' };
+    }
+    try {
+        const resp = await window.gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!A1:Z1`,
+            majorDimension: 'ROWS',
+            valueRenderOption: 'UNFORMATTED_VALUE',
+        });
+        const headers = resp.result.values?.[0] || [];
+        return { headers: headers.map(String) };
+    } catch (e: any) {
+        console.error("Fetch Remote Headers Error", e);
+        return { headers: [], error: e.message || "Failed to fetch headers" };
+    }
+};
+
+// RENAMED & REFACTORED: Only Fetches Data, No Write
+export const fetchLeadsFromSource = async (sourceKey: keyof typeof SOURCE_CONFIG): Promise<{ leads: Lead[], skipped: number, message: string, success: boolean }> => {
+    const config = SOURCE_CONFIG[sourceKey];
+    if (!config) return { leads: [], skipped: 0, message: "Invalid source configuration", success: false };
+
+    let rows: any[][] = [];
+    let headers: string[] = [];
+
+    // TRY FETCHING FROM GOOGLE SHEETS
+    if (accessToken && window.gapi?.client?.sheets) {
+        try {
+            const response = await window.gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: config.id,
+                range: `${config.sheetName}!A1:Z10000`, 
+                valueRenderOption: 'UNFORMATTED_VALUE',
+            });
+            const values = response.result.values;
+            if (values && values.length > 1) {
+                headers = values[0].map(String);
+                rows = values.slice(1);
+            }
+        } catch (e: any) {
+            console.warn("Fetch Error (using fallback):", e);
+        }
+    }
+
+    // FALLBACK TO MOCK DATA IF FETCH FAILED OR NO AUTH
+    if (rows.length === 0) {
+        console.log(`Fetching mock data for ${sourceKey}...`);
+        const mockData = getMockSourceData(sourceKey);
+        if (mockData.length > 1) {
+            headers = mockData[0];
+            rows = mockData.slice(1);
+        } else {
+             return { leads: [], skipped: 0, message: "No data found (Live or Mock)", success: false };
+        }
+    }
+
+    // Process Data
+    const currentData = await fetchSystemData();
+    const existingIds = new Set(currentData.leads.map(l => l.leadId));
+
+    const newLeads: Lead[] = [];
+    let skipped = 0;
+
+    rows.forEach((row: any[]) => {
+            const rowObj: Record<string, string> = {};
+            headers.forEach((h, idx) => {
+                rowObj[h] = (row[idx] !== undefined && row[idx] !== null) ? String(row[idx]) : '';
+            });
+
+            const partialLead = mapExternalRowToLead(rowObj, sourceKey);
+            
+            if (partialLead.leadId && !existingIds.has(partialLead.leadId)) {
+                const fullLead: Lead = {
+                    _rowIndex: -1,
+                    leadId: partialLead.leadId,
+                    date: partialLead.date || formatDate(),
+                    source: partialLead.source || config.name,
+                    companyName: partialLead.companyName || 'Unknown',
+                    status: partialLead.status || 'New',
+                    stage: 'New', 
+                    estimatedQty: 0,
+                    priority: '🟢 Low',
+                    ...partialLead
+                } as Lead; 
+                
+                if (!fullLead.priority) fullLead.priority = calculatePriority(fullLead.estimatedQty || 0);
+                if (!fullLead.createdAt) fullLead.createdAt = new Date().toISOString();
+
+                newLeads.push(fullLead);
+                existingIds.add(fullLead.leadId); 
+            } else {
+                skipped++;
+            }
+    });
+
+    return { 
+        leads: newLeads, 
+        skipped, 
+        message: `Fetched ${newLeads.length} new leads from ${config.name}. (${skipped} skipped)`, 
+        success: true 
+    };
 };

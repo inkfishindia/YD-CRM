@@ -172,6 +172,14 @@ export interface AppOptions {
 
 // --- CONSTANTS (Defaults / Fallbacks) ---
 
+export const SHEET_IDS = {
+  TKW: '1sImoVXLvVlv3_LONrDZLm-auzZPJsAE1NmAbxgz3MHU',
+  SLK: '1kJa4O-yMvcmueR2rQEK8Vze12-bf5o0t3ketLReLMx0',
+  ODC: '1UVP93fwaqxjX3TW3P6i0Uax4XeSUr2I1YZQgsJFBzm0',
+  MAIN: '1xfGsXrTU2RfYt56MqXeuXCqiHqAPp3Rh1LNKFryj_c4',
+  PARTNERS: '1U7R6KHyHoreKNdtzWHJFDyL6dRMZkbj-gyjL71LGJL8'
+};
+
 export type Owner = string;
 export type Stage = string;
 

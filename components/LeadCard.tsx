@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Lead, AppOptions, SLARule } from '../types';
-import { Phone, MessageCircle, Copy, Clock, Box, Layers, Globe, StickyNote, GripVertical, Mail, AlertTriangle, CheckCircle2, MoreHorizontal, ShoppingBag } from 'lucide-react';
+import { Phone, MessageCircle, Copy, Clock, Box, Layers, Globe, StickyNote, GripVertical, Mail, AlertTriangle, CheckCircle2, MoreHorizontal, ShoppingBag, Laptop, Truck } from 'lucide-react';
 import { useLeadCalculations } from '../hooks/useLeadCalculations';
 import { Badge } from './ui/Badge';
 
@@ -73,6 +73,10 @@ export const LeadCard: React.FC<LeadCardProps> = ({
   if (urgencyLevel === 'warning') actionBg = "bg-yellow-50 text-yellow-800 border-yellow-100";
   if (urgencyLevel === 'scheduled') actionBg = "bg-blue-50 text-blue-700 border-blue-100";
 
+  // Intent Logic
+  const isDS = lead.category?.toLowerCase().includes('drop') || lead.intent?.toLowerCase().includes('drop');
+  const isB2B = lead.category?.toLowerCase().includes('b2b') || lead.category?.toLowerCase().includes('corporate') || lead.intent?.toLowerCase().includes('b2b');
+
   return (
     <div 
         className={`
@@ -121,29 +125,59 @@ export const LeadCard: React.FC<LeadCardProps> = ({
                  </div>
             </div>
 
-            {/* TAGS ROW - Now includes Intent */}
+            {/* TAGS ROW - Context Aware */}
             <div className="flex flex-wrap gap-1.5">
-                {lead.intent && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-blue-50 border-blue-100 text-blue-700">
-                        {lead.intent}
-                    </span>
+                {isDS ? (
+                    <>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-indigo-50 border-indigo-100 text-indigo-700 flex items-center gap-1">
+                            <Laptop size={10} /> DS
+                        </span>
+                        {lead.platformType && (
+                            <span className="text-[10px] font-medium text-gray-600 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded">
+                                {lead.platformType}
+                            </span>
+                        )}
+                        {lead.integrationReady === 'Yes' && (
+                             <span className="text-[10px] font-bold text-green-600 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
+                                Linked
+                            </span>
+                        )}
+                    </>
+                ) : (
+                    <>
+                         {lead.estimatedQty > 0 && (
+                            <span className="text-[10px] font-bold text-gray-700 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <Box size={10} /> {lead.estimatedQty}
+                            </span>
+                        )}
+                        {lead.productType && (
+                             <span className="text-[10px] font-medium text-gray-600 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <ShoppingBag size={10} /> {lead.productType}
+                             </span>
+                        )}
+                    </>
                 )}
-                {lead.estimatedQty > 0 && (
-                    <span className="text-[10px] font-bold text-gray-700 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <Box size={10} /> {lead.estimatedQty}
-                    </span>
-                )}
-                {lead.productType && (
-                     <span className="text-[10px] font-medium text-gray-600 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <ShoppingBag size={10} /> {lead.productType}
-                     </span>
-                )}
+
                 {lead.priority?.includes('High') && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-red-50 border-red-100 text-red-700">
                         🔥 High
                     </span>
                 )}
             </div>
+            
+            {/* DS Context: Store URL */}
+            {isDS && lead.storeUrl && (
+                 <div className="text-[10px] text-blue-500 truncate flex items-center gap-1 bg-blue-50/50 px-1.5 py-0.5 rounded">
+                     <Globe size={10}/> {lead.storeUrl}
+                 </div>
+            )}
+
+            {/* B2B Context: Deadline */}
+            {isB2B && lead.expectedCloseDate && (
+                <div className="text-[10px] text-orange-600 truncate flex items-center gap-1 bg-orange-50/50 px-1.5 py-0.5 rounded">
+                    <Clock size={10}/> Target: {lead.expectedCloseDate}
+                </div>
+            )}
 
             {/* NEXT ACTION PANEL (Click to Expand in Detail) */}
             <div className={`rounded-lg p-2 border text-xs flex flex-col gap-1 ${actionBg}`}>

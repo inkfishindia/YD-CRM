@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Header } from './components/Header';
 import { StatsBar } from './components/StatsBar';
@@ -13,6 +14,8 @@ import { BottomNav } from './components/BottomNav';
 import { TabBar } from './components/TabBar'; 
 import { FilterPanel } from './components/FilterPanel';
 import { SmartAlertsBar } from './components/SmartAlertsBar';
+import { ImportsView } from './components/ImportsView';
+import { FetchLeadsView } from './components/FetchLeadsView'; // NEW
 import { 
   fetchSystemData, addLead, updateLead, setAccessToken, addActivityLog, 
   saveLegends, saveStageRules, saveSLARules, saveAutoActions, saveTemplates,
@@ -34,8 +37,11 @@ function App() {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   
+  // Staging / Imports State
+  const [importedLeads, setImportedLeads] = useState<Lead[]>([]);
+
   // Filters & View State
-  const [currentView, setCurrentView] = useState<'board' | 'list' | 'tasks' | 'reports' | 'settings'>('board');
+  const [currentView, setCurrentView] = useState<'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'imports' | 'fetch'>('board');
   const [currentFilter, setCurrentFilter] = useState<Owner>('All'); 
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -474,10 +480,13 @@ function App() {
           }
 
           await handleLogActivity(lead, logType, notes, '', JSON.stringify(value));
-          await handleUpdateLead(lead, { skipLog: true }); 
+          await handleUpdateItem(lead, { skipLog: true }); 
       }
       setToast({ message: `Updated ${updates.length} leads`, type: 'success' });
   };
+
+  // Helper because TypeScript might complain about handleUpdateLead in loop above
+  const handleUpdateItem = (lead: Lead, opts: any) => handleUpdateLead(lead, opts);
 
   const commonProps = useMemo(() => ({
     onUpdateLead: handleUpdateLead,
@@ -497,6 +506,12 @@ function App() {
 
   const handleRefresh = useCallback(() => loadData(true), [loadData]);
 
+  // Handler for clearing imports
+  const handleClearImports = () => {
+      setImportedLeads([]);
+      setCurrentView('board'); // Go back to default
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f5f5] flex flex-col h-screen overflow-hidden">
       <Header 
@@ -507,26 +522,28 @@ function App() {
         user={user}
         loading={loading}
         syncStatus={syncStatus}
-        currentView={currentView}
-        onViewChange={setCurrentView}
+        currentView={currentView as any}
+        onViewChange={(v) => setCurrentView(v)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         isFilterActive={Object.values(filters).some(v => v !== 'All' && v !== '')}
         onToggleFilterPanel={() => setIsFilterPanelOpen(true)}
       />
       
-      <SmartAlertsBar leads={leads} onFilter={handleSmartFilter} currentUserId={user?.email} />
-
-      <div className="flex-none hidden md:block">
-         {currentView !== 'reports' && currentView !== 'settings' && (
-             <TabBar 
-                currentFilter={currentFilter} 
-                onFilterChange={setCurrentFilter} 
-                owners={appOptions.owners} 
-             />
-         )}
-         {currentView !== 'reports' && currentView !== 'settings' && <StatsBar leads={filteredLeads} />}
-      </div>
+      {/* Hide Top Bars if in Settings or Reports or Imports */}
+      {currentView !== 'reports' && currentView !== 'settings' && currentView !== 'imports' && currentView !== 'fetch' && (
+          <>
+            <SmartAlertsBar leads={leads} onFilter={handleSmartFilter} currentUserId={user?.email} />
+            <div className="flex-none hidden md:block">
+                <TabBar 
+                    currentFilter={currentFilter} 
+                    onFilterChange={setCurrentFilter} 
+                    owners={appOptions.owners} 
+                />
+                <StatsBar leads={filteredLeads} />
+            </div>
+          </>
+      )}
 
       <div className="flex-1 overflow-hidden relative pb-16 md:pb-0 bg-[#f5f5f5]">
          <div key={currentView} className="h-full w-full animate-fade-in">
@@ -534,6 +551,19 @@ function App() {
                  <PipelineBoard leads={filteredLeads} stages={appOptions.stages} {...commonProps} />
              ) : currentView === 'reports' ? (
                  <ReportsView leads={leads} stages={appOptions.stages} legends={legends} />
+             ) : currentView === 'imports' ? (
+                 <ImportsView 
+                    importedLeads={importedLeads}
+                    onClearImports={handleClearImports}
+                    onImportComplete={() => loadData(true)}
+                    onBack={() => setCurrentView('fetch')}
+                 />
+             ) : currentView === 'fetch' ? (
+                 <FetchLeadsView 
+                    user={user}
+                    onSetImportedLeads={setImportedLeads}
+                    onViewImports={() => setCurrentView('imports')}
+                 />
              ) : currentView === 'settings' ? (
                  <SettingsView 
                     leads={leads}
@@ -553,6 +583,9 @@ function App() {
                     syncStatus={syncStatus}
                     onResetLocalData={resetLocalData}
                     onInspectLead={(lead) => setSelectedLeadForNote(lead)}
+                    onRefreshData={handleRefresh}
+                    onSetImportedLeads={setImportedLeads}
+                    onViewImports={() => setCurrentView('imports')}
                  />
              ) : (
                  <div className="h-full overflow-y-auto custom-scrollbar">
@@ -587,7 +620,7 @@ function App() {
         onReset={handleResetFilters}
       />
 
-      <BottomNav currentView={currentView} onViewChange={setCurrentView} />
+      <BottomNav currentView={currentView as any} onViewChange={(v) => setCurrentView(v)} />
 
       <AddLeadModal 
         isOpen={isModalOpen} 

@@ -1,9 +1,10 @@
+
 import React from 'react';
-import { Kanban, List, CheckSquare, BarChart3, Settings } from 'lucide-react';
+import { Kanban, List, CheckSquare, BarChart3, Settings, Import } from 'lucide-react';
 
 interface BottomNavProps {
-  currentView: 'board' | 'list' | 'tasks' | 'reports' | 'settings';
-  onViewChange: (view: 'board' | 'list' | 'tasks' | 'reports' | 'settings') => void;
+  currentView: 'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'fetch';
+  onViewChange: (view: 'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'fetch') => void;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onViewChange }) => {
@@ -11,6 +12,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onViewChange 
     { id: 'board', label: 'Board', icon: Kanban },
     { id: 'tasks', label: 'Tasks', icon: CheckSquare },
     { id: 'list', label: 'List', icon: List },
+    { id: 'fetch', label: 'Fetch', icon: Import }, // NEW
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'settings', label: 'Config', icon: Settings },
   ] as const;
