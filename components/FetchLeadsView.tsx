@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
@@ -356,7 +358,7 @@ export const FetchLeadsView: React.FC<FetchLeadsViewProps> = ({ user, onSetImpor
         }
     };
 
-    const totalLeads = Object.values(leadsBySource).reduce((acc, l) => acc + l.length, 0);
+    const totalLeads = Object.values(leadsBySource).reduce((acc: number, l: Lead[]) => acc + l.length, 0);
 
     return (
         <div className="p-6 max-w-5xl mx-auto pb-24">

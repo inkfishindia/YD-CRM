@@ -23,7 +23,7 @@ let gisInited = false;
 // --- 1. Robust Storage (Iframe Safe with Memory Fallback) ---
 const memoryStorage: Record<string, string> = {};
 
-const safeSetItem = (key: string, value: string) => {
+export const safeSetItem = (key: string, value: string) => {
     try {
         localStorage.setItem(key, value);
     } catch (e) {
@@ -32,7 +32,7 @@ const safeSetItem = (key: string, value: string) => {
     }
 };
 
-const safeGetItem = (key: string): string | null => {
+export const safeGetItem = (key: string): string | null => {
     try {
         return localStorage.getItem(key);
     } catch (e) {
@@ -40,7 +40,7 @@ const safeGetItem = (key: string): string | null => {
     }
 };
 
-const safeRemoveItem = (key: string) => {
+export const safeRemoveItem = (key: string) => {
     try {
         localStorage.removeItem(key);
     } catch (e) {

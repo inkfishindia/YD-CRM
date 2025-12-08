@@ -1,6 +1,7 @@
 
 import { 
-    fetchIntakeConfig, fetchDynamicSheet, addLead, addActivityLog, updateSourceRow, SOURCE_CONFIG
+    fetchIntakeConfig, fetchDynamicSheet, addLead, addActivityLog, updateSourceRow, SOURCE_CONFIG,
+    writeToLeadsSheet, writeToLeadFlowsSheet, writeBackToSourceSheet
 } from './sheetService';
 import { 
     IntakeRow, FieldMapRule, Lead, SourceConfig, 
@@ -56,13 +57,10 @@ const parseRow = (
     }
 
     // Fallback: Check Write-Back ID Column
-    // Crucial: Only skip if a CRM ID is present (indicating import).
-    // Do NOT skip if it's just the source's own lead_id (which usually maps to sourceRowId).
     if (metadataIndices.id !== -1) {
         const existingId = rawData[metadataIndices.id];
-        // If this column is populated, it implies the system wrote back an ID.
-        // We ensure `metadataIndices.id` ONLY points to specific CRM/Write-back headers in `scanSources`.
-        if (existingId && String(existingId).trim().length > 0) {
+        // Only skip if the ID looks like a CRM ID (e.g., YDS- or LEAD-)
+        if (existingId && (String(existingId).includes('YDS-') || String(existingId).includes('LEAD-'))) {
             return null; 
         }
     }
@@ -167,7 +165,8 @@ const parseRow = (
         priority: rowMap['priority'] || '',
         contactStatus: rowMap['contact_status'] || rowMap['contactStatus'] || '',
         paymentUpdate: rowMap['payment_update'] || rowMap['paymentUpdate'] || '',
-        intent: rowMap['intent'] || rowMap['Category'] || rowMap['category'] || findVal(['lead category']) || '',
+        intent: rowMap['intent'] || '', 
+        category: rowMap['category'] || rowMap['Category'] || findVal(['lead category', 'category']) || '', 
         customerType: rowMap['customer_type'] || rowMap['customerType'] || '',
         
         // Dropship / Specifics
@@ -190,6 +189,10 @@ export interface SourceStat {
     status: 'ok' | 'error' | 'empty';
     lastSync: string;
 }
+
+const generateLeadId = () => {
+    return `YDS-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+};
 
 export const IntakeService = {
     getConfig: async () => {
@@ -240,8 +243,8 @@ export const IntakeService = {
             
             // CRITICAL: Identify WRITE-BACK Columns. 
             const metadataIndices = {
-                id: findIdx(['yds_lead_id', 'yds lead id', 'crm_id', 'crm_row_id', 'YDS LEAD ID']), // Matches TKW, Commerce, Dropship writeback headers
-                status: findIdx(['crm_status', 'status', 'import_status', 'yds_lead_status', 'YDC - Status']), // Matches YDC - Status
+                id: findIdx(['yds_lead_id', 'yds lead id', 'crm_id', 'crm_row_id', 'YDS LEAD ID']), 
+                status: findIdx(['crm_status', 'status', 'import_status', 'yds_lead_status', 'YDC - Status']), 
                 at: findIdx(['crm_processed_at', 'processed_at', 'import_date']),
                 by: findIdx(['crm_processed_by', 'processed_by', 'imported_by'])
             };
@@ -286,7 +289,8 @@ export const IntakeService = {
         let success = 0;
         let failed = 0;
         const now = new Date().toLocaleString();
-        const user = 'ActiveUser';
+        const isoDate = new Date().toISOString();
+        const user = 'ActiveUser'; // In real app, pass actual user
 
         for (const row of rows) {
             if (!row.isValid) {
@@ -294,9 +298,14 @@ export const IntakeService = {
                 continue;
             }
 
-            const leadId = `LEAD-${Date.now()}-${Math.floor(Math.random()*1000)}`;
-            const baseLead: Partial<Lead> = {
+            const leadId = generateLeadId();
+            const flowId = `FLOW-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            
+            const leadData: Lead = {
+                _rowIndex: -1, // New row
                 leadId,
+                flowId,
+                
                 // Identity
                 companyName: row.companyName,
                 contactPerson: row.contactPerson,
@@ -304,57 +313,79 @@ export const IntakeService = {
                 email: row.email,
                 city: row.city,
                 source: row.source,
-                sourceRowId: row.sourceRowId || String(row.sourceRowIndex), 
-                date: row.date,
+                category: row.category || row.intent || 'Customisation', 
+                createdBy: user,
                 tags: row.tags,
-                info: row.info,
-                remarks: row.remarks,
+                identityStatus: 'Active',
+                createdAt: isoDate,
+                date: row.date || formatDate(), 
                 leadScore: row.leadScore,
-                
+                remarks: row.remarks,
+                sourceRowId: row.sourceRowId || String(row.sourceRowIndex),
+                info: row.info,
+
                 // Flow
-                estimatedQty: row.estimatedQty,
-                productType: row.productType,
-                printType: row.printType,
-                orderInfo: row.orderInfo || row.notes,
-                notes: row.notes,
-                channel: row.channel,
-                owner: row.owner,
+                originalChannel: row.channel || '',
+                channel: row.channel || (row.sourceLayer.includes('Dropship') ? 'Dropshipping' : 'B2B'),
+                owner: row.owner || 'Unassigned',
+                ydsPoc: row.owner || 'Unassigned',
                 status: row.status || 'New',
                 stage: row.stage || 'New',
-                startDate: row.startDate,
-                expectedCloseDate: row.expectedCloseDate,
+                sourceFlowTag: row.sourceLayer,
+                updatedAt: isoDate,
+                startDate: row.startDate || isoDate,
+                expectedCloseDate: row.expectedCloseDate || '',
+                wonDate: '',
+                lostDate: '',
+                lostReason: '',
+                notes: row.notes || row.orderInfo || '',
+                estimatedQty: row.estimatedQty || 0,
+                productType: row.productType || '',
+                printType: row.printType || '',
                 priority: row.priority || '🟢 Low',
-                contactStatus: row.contactStatus,
-                paymentUpdate: row.paymentUpdate,
-                intent: row.intent,
-                customerType: row.customerType,
+                contactStatus: row.contactStatus || 'Not Contacted',
+                paymentUpdate: row.paymentUpdate || 'Pending',
+                nextAction: 'Assign Owner',
+                nextActionDate: row.nextActionDate || '',
+                intent: row.intent || '',
+                customerType: row.customerType || 'New',
                 
-                // Dropship / Specifics
-                storeUrl: row.storeUrl,
+                // UI Computed
+                orderInfo: row.orderInfo,
+                contactAttempts: 0,
+                lastContactDate: '',
+                lastAttemptDate: '',
+                slaStatus: 'Healthy',
+                slaHealth: '🟢',
+                daysOpen: '0',
+                actionOverdue: 'OK',
+                firstResponseTime: '',
+                stageChangedDate: isoDate,
+                
+                // DS
                 platformType: row.platformType,
                 integrationReady: row.integrationReady,
-                nextActionDate: row.nextActionDate, // Map Next Follow Up
-                
-                // System
-                createdAt: formatDate(),
-                updatedAt: formatDate(),
-                contactAttempts: 0,
-                daysOpen: '0d'
+                storeUrl: row.storeUrl,
+                accountCreated: '',
+                dashboardLinkSent: '',
+                onboardingStartedDate: '',
+                activationDate: '',
+                sampleRequired: '',
+                sampleStatus: '',
+                workflowType: '',
+                designsReady: '',
+                firstProductCreated: '',
+                whatsappMessage: ''
             };
 
-            if (!baseLead.channel) {
-                baseLead.channel = (row.sourceLayer.includes('TKW') ? 'B2B' : 
-                                   row.sourceLayer.includes('Commerce') || row.sourceLayer.includes('DS') ? 'Dropshipping' : 'B2B');
-            }
-            if (!baseLead.category) {
-                baseLead.category = baseLead.channel === 'Dropshipping' ? 'Dropshipping' : 'Customisation';
-            }
+            // Write to Sheets using new helpers
+            const identitySuccess = await writeToLeadsSheet(leadData);
+            const flowSuccess = await writeToLeadFlowsSheet(leadData);
 
-            const ok = await addLead(baseLead);
-            
-            if (ok) {
+            if (identitySuccess && flowSuccess) {
                 success++;
                 
+                // Write back to source sheet
                 const updates = [
                     { colIndex: row.wbColIndex_Id, value: leadId }
                 ];
@@ -363,7 +394,7 @@ export const IntakeService = {
                 if (row.wbColIndex_ProcessedAt !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedAt, value: now });
                 if (row.wbColIndex_ProcessedBy !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedBy, value: user });
 
-                await updateSourceRow(
+                await writeBackToSourceSheet(
                     row.sourceSheetId,
                     row.sourceTab,
                     row.sourceRowIndex,
@@ -375,7 +406,7 @@ export const IntakeService = {
                     leadId,
                     activityType: 'Import',
                     timestamp: now,
-                    owner: 'System (Intake)',
+                    owner: 'System',
                     notes: `Imported from ${row.sourceLayer}. Source Row: ${row.sourceRowIndex}`,
                     fromValue: '',
                     toValue: 'New'

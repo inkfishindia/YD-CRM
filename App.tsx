@@ -1,234 +1,165 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  Lead, GoogleUser, AppOptions, LegendItem, StageRule, SLARule, 
+  AutoActionRule, MessageTemplate, ActivityLog, determineLeadHealth, 
+  ConfigStore 
+} from './types';
+import { 
+  MOCK_LEADS, MOCK_LEGENDS, MOCK_STAGE_RULES, 
+  MOCK_SLA_RULES, MOCK_AUTO_ACTIONS, MOCK_TEMPLATES 
+} from './data/mock/mockData';
+import { initGoogleAuth, loginToGoogle, logoutGoogle, restoreSession, trySilentRefresh } from './services/googleAuth';
+import { updateLead, loadSheetRange, getSpreadsheetId, SHEET_NAME_LEADS, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_ACTIVITY, addActivityLog } from './services/sheetService';
+
 import { Header } from './components/Header';
-import { StatsBar } from './components/StatsBar';
-import { PipelineBoard } from './components/PipelineBoard'; 
-import { LeadList } from './components/LeadList';
-import { ReportsView } from './components/ReportsView';
-import { SettingsView } from './components/SettingsView';
-import { AddLeadModal } from './components/AddLeadModal';
-import { Toast } from './components/Toast';
-import { LeadDetailPanel } from './components/LeadDetailPanel'; 
-import { BulkActionBar } from './components/BulkActionBar';
 import { BottomNav } from './components/BottomNav';
-import { TabBar } from './components/TabBar'; 
-import { FilterPanel } from './components/FilterPanel';
-import { SmartAlertsBar } from './components/SmartAlertsBar';
+import { StatsBar } from './components/StatsBar';
+import { TabBar } from './components/TabBar';
+import { LeadList } from './components/LeadList';
+import { PipelineBoard } from './components/PipelineBoard';
+import { SettingsView } from './components/SettingsView';
+import { ImportsView } from './components/ImportsView';
 import { IntakeInbox } from './components/IntakeInbox';
 import { ContactsView, AccountsView, StoresView, ProductsView, OrdersView } from './components/ModuleViews';
+import { ReportsView } from './components/ReportsView';
 import { ProjectManager } from './components/ProjectManager';
-import { 
-  fetchSystemData, addLead, updateLead, setAccessToken, addActivityLog, 
-  resetLocalData, getSpreadsheetId, updateGlobalSpreadsheetId 
-} from './services/sheetService';
-import { RoutingService, StageService } from './services/workflow';
-import { initGoogleAuth, loginToGoogle, logoutGoogle, restoreSession, trySilentRefresh } from './services/googleAuth';
-import { 
-  Lead, Owner, GoogleUser, ConfigStore, AppOptions,
-  ActivityLog, formatDate, determineLeadHealth
-} from './types';
-import { Plus, Hammer, AlertTriangle } from 'lucide-react';
+import { AddLeadModal } from './components/AddLeadModal';
+import { SmartAlertsBar } from './components/SmartAlertsBar';
+import { FilterPanel } from './components/FilterPanel';
+import { Toast } from './components/Toast';
 
-type ViewState = 'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'intake' | 'contacts' | 'accounts' | 'flows' | 'stores' | 'products' | 'orders';
+type ViewState = 'contacts' | 'accounts' | 'flows' | 'stores' | 'products' | 'orders' | 'reports' | 'settings' | 'board' | 'list' | 'tasks' | 'intake';
 
-function App() {
+const App: React.FC = () => {
+  // Auth State
+  const [user, setUser] = useState<GoogleUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'success' | 'error'>('success');
+  const [loading, setLoading] = useState(false);
+
+  // App Data State
   const [leads, setLeads] = useState<Lead[]>([]);
-  
-  // Config Store State (New)
-  const [config, setConfig] = useState<ConfigStore>({
-      legends: {},
-      stageRules: [],
-      slaRules: [],
-      autoActions: [],
-      templates: []
-  });
-
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   
-  // View State - Default to 'intake' (Inbox) as Landing Page
-  const [currentView, setCurrentView] = useState<ViewState>('intake');
-  const [flowSubView, setFlowSubView] = useState<'board' | 'list' | 'tasks'>('board');
-  const [currentFilter, setCurrentFilter] = useState<Owner>('All'); 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isPMMode, setIsPMMode] = useState(false);
-  const [currentSpreadsheetId, setCurrentSpreadsheetId] = useState<string>(getSpreadsheetId());
-
-  // Filters
-  const [filters, setFilters] = useState({
-      stage: 'All',
-      owner: 'All',
-      category: 'All',
-      priority: 'All',
-      source: 'All',
-      city: ''
+  // Config State
+  const [appOptions, setAppOptions] = useState<AppOptions>({
+    owners: MOCK_LEGENDS.owner_list,
+    stages: MOCK_LEGENDS.stage_list,
+    sources: MOCK_LEGENDS.source_list,
+    categories: MOCK_LEGENDS.category_list,
+    priorities: MOCK_LEGENDS.priority_list,
+    productTypes: MOCK_LEGENDS.product_type_list,
+    printTypes: MOCK_LEGENDS.print_type_list,
+    contactStatus: MOCK_LEGENDS.contact_status_list,
+    paymentStatus: MOCK_LEGENDS.payment_update_list,
+    designStatus: MOCK_LEGENDS.design_status_list,
+    lostReasons: ['Price', 'Competitor', 'No Response'],
+    customerTypes: MOCK_LEGENDS.customer_type_list,
+    platformTypes: MOCK_LEGENDS.platform_type_list,
+    sampleStatus: MOCK_LEGENDS.sample_status_list,
+    orderStatus: ['Pending', 'Processing', 'Shipped'],
+    nextActionTypes: ['Call', 'Email', 'Meeting'],
+    intents: MOCK_LEGENDS.intent_list,
+    workflowTypes: MOCK_LEGENDS.workflow_type_list
   });
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-  const [smartFilter, setSmartFilter] = useState<string>('All'); 
-  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+
+  const [legends, setLegends] = useState<LegendItem[]>([]);
+  const [stageRules, setStageRules] = useState<StageRule[]>(MOCK_STAGE_RULES as any);
+  const [slaRules, setSLARules] = useState<SLARule[]>(MOCK_SLA_RULES as any);
+  const [autoActions, setAutoActions] = useState<AutoActionRule[]>(MOCK_AUTO_ACTIONS as any);
+  const [templates, setTemplates] = useState<MessageTemplate[]>(MOCK_TEMPLATES as any);
 
   // UI State
-  const [loading, setLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState<'success' | 'error'>('success');
-  const [syncErrorMsg, setSyncErrorMsg] = useState<string>('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
-  const [selectedLeadForNote, setSelectedLeadForNote] = useState<Lead | null>(null);
-
-  // Auth
-  const [user, setUser] = useState<GoogleUser | null>(() => {
-    const session = restoreSession();
-    return session ? session.user : null;
+  const [currentView, setCurrentView] = useState<ViewState>('board');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [pmMode, setPmMode] = useState(false);
+  const [toast, setToast] = useState<{ msg: string, type: 'success' | 'error' } | null>(null);
+  
+  // Filter State
+  const [currentOwnerFilter, setCurrentOwnerFilter] = useState('All');
+  const [advancedFilters, setAdvancedFilters] = useState({
+    stage: 'All', owner: 'All', category: 'All', priority: 'All', source: 'All', city: ''
   });
 
-  // --- DERIVED OPTIONS FROM CONFIG STORE ---
-  const appOptions = useMemo<AppOptions>(() => {
-      // Helper to flatten legend items to strings
-      const extract = (key: string) => (config.legends[key] || []).map(i => i.value);
+  // Staging State
+  const [stagedLeads, setStagedLeads] = useState<Lead[]>([]);
+  const [showStaging, setShowStaging] = useState(false);
 
-      return {
-          owners: extract('owner'),
-          stages: extract('stage'),
-          sources: extract('source'),
-          categories: extract('category'),
-          priorities: extract('priority'),
-          productTypes: extract('product_type'),
-          printTypes: extract('print_type'),
-          contactStatus: extract('contact_status'),
-          paymentStatus: extract('payment_update'),
-          designStatus: extract('design_status'),
-          lostReasons: extract('lost_reason'),
-          customerTypes: extract('customer_type'),
-          platformTypes: extract('platform_type'),
-          sampleStatus: extract('sample_status'),
-          orderStatus: extract('order_status'),
-          nextActionTypes: extract('next_action_type'),
-          intents: extract('intent'),
-          workflowTypes: extract('workflow_type')
-      };
-  }, [config]);
-
-  // --- DATA LOADING ---
-  const loadData = useCallback(async (isRefresh = false) => {
-    setLoading(true);
-    const data = await fetchSystemData(isRefresh); 
-    
-    setLeads(data.leads);
-    setConfig(data.config); // Load normalized config
-    setActivityLogs(data.activityLogs);
-
-    setLoading(false);
-
-    if (user && data.dataSource === 'local') {
-        setSyncStatus('error');
-        setSyncErrorMsg(data.error || 'Failed to fetch data from Google Sheets');
-        setToast({ 
-            message: `Sync Failed: ${data.error || 'Check Module Permissions'}`, 
-            type: 'error' 
-        });
-    } else {
-        setSyncStatus(data.success ? 'success' : 'error');
-        setSyncErrorMsg('');
-        if (isRefresh && data.success) {
-           setToast({ message: 'Modules synced!', type: 'success' });
-        }
-    }
-  }, [user]);
-
+  // --- Auth & Init ---
   useEffect(() => {
-    let isMounted = true;
-    const session = restoreSession();
-    
-    if (session) {
-      setAccessToken(session.accessToken);
-    }
-
-    const initialize = async () => {
-      initGoogleAuth(async (success) => {
-        if (!isMounted) return;
-        if (success) {
-           if (session) {
-              setAccessToken(session.accessToken);
-              loadData(false);
-           } else {
-              const refreshedSession = await trySilentRefresh();
-              if (refreshedSession && isMounted) {
-                  setAccessToken(refreshedSession.accessToken);
-                  setUser(refreshedSession.user);
-                  loadData(false);
-              } else {
-                  loadData(false); 
-              }
-           }
+    initGoogleAuth(async (success) => {
+      if (success) {
+        const session = restoreSession();
+        if (session) {
+          setUser(session.user);
+          loadData();
         } else {
-            loadData(false);
+          // Attempt silent refresh
+          const refreshed = await trySilentRefresh();
+          if (refreshed) {
+            setUser(refreshed.user);
+            loadData();
+          } else {
+            // Guest / Offline Mode - Load Mocks
+            setLeads(MOCK_LEADS as any);
+            setSyncStatus('success'); 
+          }
         }
-      });
-    };
-    initialize();
-    return () => { isMounted = false; };
-  }, [loadData]);
-
-  // --- ACTIONS ---
+      } else {
+        setSyncStatus('error');
+      }
+      setAuthLoading(false);
+    });
+  }, []);
 
   const handleLogin = async () => {
     try {
-      const { accessToken, user } = await loginToGoogle();
-      setAccessToken(accessToken);
+      const { user } = await loginToGoogle();
       setUser(user);
-      setToast({ message: `Welcome ${user.name}!`, type: 'success' });
-      setTimeout(() => loadData(true), 100); 
-    } catch (error) {
-      setToast({ message: 'Login cancelled.', type: 'error' });
+      loadData();
+    } catch (e) {
+      console.error(e);
+      setSyncStatus('error');
     }
   };
 
   const handleLogout = () => {
     logoutGoogle();
-    setAccessToken(null);
     setUser(null);
-    setToast({ message: 'Logged out', type: 'success' });
-    setTimeout(() => loadData(true), 100);
+    setLeads(MOCK_LEADS as any); // Fallback to mock on logout
   };
 
-  const handleUpdateSpreadsheetId = async (id: string) => {
-      updateGlobalSpreadsheetId(id);
-      setCurrentSpreadsheetId(id);
-      setToast({ message: 'Updating Connection...', type: 'success' });
-      await loadData(true);
-  };
-
-  const handleAddLead = useCallback(async (newLead: Partial<Lead>) => {
-    // 1. Route Lead (Routing Engine)
-    const routedLead = RoutingService.routeLead(newLead, config);
-    
-    // 2. Set defaults
-    const todayStr = formatDate();
-    const optimisticLead: Lead = { 
-        ...routedLead, 
-        _rowIndex: -1, 
-        leadId: 'TEMP-' + Date.now(), 
-        priority: '🟢 Low', 
-        daysOpen: '0d', 
-        date: todayStr, 
-        createdAt: todayStr, 
-        stageChangedDate: todayStr 
-    } as Lead;
-
-    // 3. UI Update
-    setLeads(prev => [optimisticLead, ...prev]);
-    
-    // 4. Backend Update
-    const success = await addLead(routedLead);
-    if (success) { 
-        setToast({ message: 'Lead added!', type: 'success' }); 
-        await loadData(true); 
-    } else { 
-        setToast({ message: 'Failed to write (View Only?)', type: 'error' }); 
+  // --- Data Loading ---
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // In a real implementation, we would fetch all sheets here.
+      // For now, we simulate or fetch if user is logged in.
+      if (user) {
+         // TODO: Implement actual fetch logic mapping sheet rows to Lead objects
+         // const rows = await loadSheetRange(getSpreadsheetId(), `${SHEET_NAME_LEAD_FLOWS}!A2:Z`);
+         // const mappedLeads = mapRowsToLeads(rows);
+         // setLeads(mappedLeads);
+         
+         // For demonstration, keep using mocks mixed with live capability if implemented
+         setLeads(MOCK_LEADS as any);
+      }
+      setSyncStatus('success');
+    } catch (e) {
+      console.error(e);
+      setSyncStatus('error');
     }
-  }, [config, loadData]);
+    setLoading(false);
+  };
+
+  // --- Actions ---
 
   const handleUpdateLead = useCallback(async (updatedLead: Lead, options: { skipLog?: boolean, customLogType?: string } = {}) => {
-    const health = determineLeadHealth(updatedLead, config.slaRules);
+    // Optimistic Update
+    const health = determineLeadHealth(updatedLead, slaRules);
     const calculatedLead = { 
         ...updatedLead, 
         slaHealth: health.status === 'Violated' ? '🔴' : health.status === 'Warning' ? '🟡' : '🟢', 
@@ -239,151 +170,219 @@ function App() {
     setLeads(prev => prev.map(l => l.leadId === calculatedLead.leadId ? calculatedLead : l));
     
     if (!options.skipLog) {
-        addActivityLog({
+        const log = {
             logId: Date.now().toString(),
             leadId: calculatedLead.leadId,
+            flowId: calculatedLead.flowId,
             activityType: options.customLogType || 'Update',
             timestamp: new Date().toLocaleString(),
             owner: user?.name || 'System',
             notes: 'Updated lead details',
             fromValue: '',
-            toValue: 'New'
-        });
+            toValue: ''
+        };
+        setActivityLogs(prev => [log, ...prev]);
+        if (user) await addActivityLog(log);
     }
 
-    await updateLead(calculatedLead);
-  }, [config.slaRules, user]);
+    if (user) await updateLead(calculatedLead, user.email);
+  }, [slaRules, user]);
 
-  const handleViewChange = (view: ViewState) => {
-      if (['board', 'list', 'tasks'].includes(view)) {
-          setFlowSubView(view as any);
-          setCurrentView(view);
-      } else {
-          setCurrentView(view);
+  const handleAddLead = async (newLead: Partial<Lead>) => {
+      // Create new lead logic
+      const fullLead = { ...newLead, status: 'New', stage: 'New' } as Lead;
+      setLeads(prev => [fullLead, ...prev]);
+      if (user) {
+          // call addLead service
       }
+      setToast({ msg: 'Lead Created', type: 'success' });
   };
 
-  const isFlowView = ['board', 'list', 'tasks'].includes(currentView);
+  const handleFilterChange = (key: string, value: string) => {
+      setAdvancedFilters(prev => ({ ...prev, [key]: value }));
+  };
 
-  // --- RENDER ---
+  // --- Derived State ---
+  const filteredLeads = useMemo(() => {
+      let data = leads;
+      
+      // Global Search
+      if (searchQuery) {
+          const lower = searchQuery.toLowerCase();
+          data = data.filter(l => 
+              l.companyName?.toLowerCase().includes(lower) || 
+              l.contactPerson?.toLowerCase().includes(lower) ||
+              l.number?.includes(lower)
+          );
+      }
 
-  if (isPMMode) {
-      return <ProjectManager onExit={() => setIsPMMode(false)} />;
+      // Tab Filter (Owner)
+      if (currentOwnerFilter !== 'All') {
+          data = data.filter(l => l.ydsPoc === currentOwnerFilter);
+      }
+
+      // Advanced Filters
+      if (advancedFilters.stage !== 'All') data = data.filter(l => l.status === advancedFilters.stage);
+      if (advancedFilters.owner !== 'All') data = data.filter(l => l.ydsPoc === advancedFilters.owner);
+      if (advancedFilters.category !== 'All') data = data.filter(l => l.category === advancedFilters.category);
+      if (advancedFilters.priority !== 'All') data = data.filter(l => l.priority?.includes(advancedFilters.priority));
+      if (advancedFilters.source !== 'All') data = data.filter(l => l.source === advancedFilters.source);
+      if (advancedFilters.city) data = data.filter(l => l.city?.toLowerCase().includes(advancedFilters.city.toLowerCase()));
+
+      return data;
+  }, [leads, searchQuery, currentOwnerFilter, advancedFilters]);
+
+  // --- Render ---
+
+  if (pmMode) {
+      return <ProjectManager onExit={() => setPmMode(false)} />;
   }
 
-  const commonProps = useMemo(() => ({
-      onUpdateLead: handleUpdateLead,
-      loading: loading,
-      onQuickNote: (lead: Lead) => setSelectedLeadForNote(lead),
-      appOptions: appOptions,
-      autoActions: config.autoActions,
-      templates: config.templates,
-      stageRules: config.stageRules,
-      slaRules: config.slaRules,
-      selectedIds: selectedLeadIds,
-      onToggleSelect: (id: string) => setSelectedLeadIds(prev => { const n = new Set(prev); if(n.has(id)) n.delete(id); else n.add(id); return n; }),
-      activityLogs: activityLogs,
-      user: user
-  }), [handleUpdateLead, loading, appOptions, config, selectedLeadIds, activityLogs, user]);
+  if (showStaging) {
+      return (
+          <ImportsView 
+              importedLeads={stagedLeads} 
+              onClearImports={() => { setStagedLeads([]); setShowStaging(false); }}
+              onImportComplete={() => { loadData(); setShowStaging(false); }}
+              onBack={() => setShowStaging(false)}
+          />
+      );
+  }
 
-  const filteredLeads = useMemo(() => {
-      return leads.filter(l => {
-          if (currentFilter !== 'All' && l.ydsPoc !== currentFilter) return false;
-          if (searchQuery && !l.companyName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-          return true;
-      });
-  }, [leads, currentFilter, searchQuery]);
+  const renderView = () => {
+      if (currentView === 'intake') {
+          return (
+              <IntakeInbox 
+                  user={user} 
+                  onLogin={handleLogin} 
+                  onImportSuccess={loadData} 
+                  existingLeads={leads}
+              />
+          );
+      }
+      
+      if (currentView === 'settings') {
+          return (
+              <SettingsView 
+                  leads={leads}
+                  legends={legends}
+                  onUpdateLegends={setLegends}
+                  stageRules={stageRules}
+                  onUpdateStageRules={setStageRules}
+                  slaRules={slaRules}
+                  onUpdateSLARules={setSLARules}
+                  autoActions={autoActions}
+                  onUpdateAutoActions={setAutoActions}
+                  templates={templates}
+                  onUpdateTemplates={setTemplates}
+                  currentSpreadsheetId={getSpreadsheetId()}
+                  onUpdateSpreadsheetId={(id) => { /* update id */ }}
+                  user={user}
+                  syncStatus={syncStatus}
+                  onResetLocalData={() => setLeads([])}
+                  onSetImportedLeads={(l) => { setStagedLeads(l); }}
+                  onViewImports={() => setShowStaging(true)}
+                  onEnterPMMode={() => setPmMode(true)}
+              />
+          );
+      }
+
+      if (currentView === 'reports') return <ReportsView leads={leads} stages={appOptions.stages} legends={legends} />;
+      if (currentView === 'contacts') return <ContactsView leads={leads} onUpdateLead={handleUpdateLead} />;
+      if (currentView === 'accounts') return <AccountsView />;
+      if (currentView === 'stores') return <StoresView />;
+      if (currentView === 'products') return <ProductsView />;
+      if (currentView === 'orders') return <OrdersView />;
+
+      // Core Views (Board/List/Tasks)
+      return (
+          <>
+             <StatsBar leads={leads} />
+             {currentView === 'board' && (
+                 <>
+                    <TabBar owners={appOptions.owners} currentFilter={currentOwnerFilter} onFilterChange={setCurrentOwnerFilter} />
+                    <SmartAlertsBar leads={filteredLeads} onFilter={() => {}} />
+                    <PipelineBoard 
+                        leads={filteredLeads} 
+                        stages={appOptions.stages}
+                        onUpdateLead={handleUpdateLead}
+                        loading={loading}
+                        onQuickNote={(l) => { /* open note */ }}
+                        appOptions={appOptions}
+                        stageRules={stageRules}
+                        slaRules={slaRules}
+                        autoActions={autoActions}
+                        templates={templates}
+                        activityLogs={activityLogs}
+                        onLogActivity={(l, type, note) => { /* log */ }}
+                    />
+                 </>
+             )}
+             {(currentView === 'list' || currentView === 'tasks') && (
+                 <LeadList 
+                    leads={filteredLeads}
+                    viewMode={currentView}
+                    onUpdateLead={handleUpdateLead}
+                    loading={loading}
+                    onQuickNote={(l) => {}}
+                    appOptions={appOptions}
+                    stageRules={stageRules}
+                    slaRules={slaRules}
+                    autoActions={autoActions}
+                    templates={templates}
+                    activityLogs={activityLogs}
+                    user={user}
+                 />
+             )}
+          </>
+      );
+  };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen bg-[#f5f5f5] text-slate-800 font-sans">
       <Header 
-        onAddClick={() => setIsModalOpen(true)} 
-        onRefresh={() => loadData(true)}
+        user={user}
+        loading={authLoading || loading}
+        syncStatus={syncStatus}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        user={user}
-        loading={loading}
-        syncStatus={syncStatus}
+        onRefresh={loadData}
+        onAddClick={() => setShowAddModal(true)}
         currentView={currentView}
-        onViewChange={handleViewChange}
+        onViewChange={(v) => setCurrentView(v)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        isFilterActive={false}
-        onToggleFilterPanel={() => setIsFilterPanelOpen(true)}
+        isFilterActive={isFilterPanelOpen}
+        onToggleFilterPanel={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
       />
-      
-      {/* Global Error Banner */}
-      {syncStatus === 'error' && (
-        <div className="bg-red-600 text-white px-4 py-2 text-sm font-bold flex justify-between items-center shadow-md relative z-50 shrink-0 animate-fade-in-up">
-            <div className="flex items-center gap-2">
-                <AlertTriangle size={18} />
-                <span>Connection Error: {syncErrorMsg || 'Unable to sync with Google Sheets. Using offline data.'}</span>
-            </div>
-            <button 
-                onClick={() => loadData(true)} 
-                className="bg-white text-red-600 px-3 py-1 rounded hover:bg-red-50 text-xs uppercase font-bold transition-colors"
-            >
-                Retry
-            </button>
-        </div>
+
+      <main className="flex-1 overflow-hidden relative">
+          {renderView()}
+      </main>
+
+      <BottomNav currentView={currentView} onViewChange={setCurrentView} />
+
+      <FilterPanel 
+          isOpen={isFilterPanelOpen} 
+          onClose={() => setIsFilterPanelOpen(false)}
+          appOptions={appOptions}
+          filters={advancedFilters}
+          onFilterChange={handleFilterChange}
+          onReset={() => setAdvancedFilters({ stage: 'All', owner: 'All', category: 'All', priority: 'All', source: 'All', city: '' })}
+      />
+
+      <AddLeadModal 
+          isOpen={showAddModal} 
+          onClose={() => setShowAddModal(false)}
+          onSave={handleAddLead}
+          appOptions={appOptions}
+      />
+
+      {toast && (
+          <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />
       )}
-      
-      <button onClick={() => setIsPMMode(true)} className="fixed top-20 right-4 z-50 p-2 bg-slate-800 text-white rounded-full shadow-lg opacity-20 hover:opacity-100 transition-opacity">
-        <Hammer size={16} />
-      </button>
-
-      {isFlowView && (
-          <>
-            <SmartAlertsBar leads={leads} onFilter={setSmartFilter} />
-            <div className="flex-none hidden md:block">
-                <TabBar currentFilter={currentFilter} onFilterChange={setCurrentFilter} owners={appOptions.owners} />
-                <StatsBar leads={filteredLeads} />
-            </div>
-          </>
-      )}
-
-      <div className="flex-1 overflow-hidden relative pb-16 md:pb-0 bg-[#f5f5f5]">
-         <div key={currentView} className="h-full w-full animate-fade-in">
-             {currentView === 'board' ? <PipelineBoard leads={filteredLeads} stages={appOptions.stages} {...commonProps} /> :
-              currentView === 'list' ? <div className="h-full overflow-y-auto"><LeadList leads={filteredLeads} viewMode='list' {...commonProps} /></div> :
-              currentView === 'tasks' ? <div className="h-full overflow-y-auto"><LeadList leads={filteredLeads} viewMode='tasks' {...commonProps} /></div> :
-              currentView === 'intake' ? <IntakeInbox user={user} onImportSuccess={() => loadData(true)} onLogin={handleLogin} existingLeads={leads} /> :
-              currentView === 'settings' ? <SettingsView 
-                                                legends={Object.values(config.legends).flat()} 
-                                                stageRules={config.stageRules} 
-                                                slaRules={config.slaRules} 
-                                                autoActions={config.autoActions} 
-                                                templates={config.templates} 
-                                                currentSpreadsheetId={currentSpreadsheetId}
-                                                onUpdateSpreadsheetId={handleUpdateSpreadsheetId}
-                                                user={user} 
-                                                syncStatus={syncStatus} 
-                                                onResetLocalData={resetLocalData} 
-                                                // These are no longer needed but kept for type compat if strictly checked, otherwise removed
-                                                onSetImportedLeads={() => {}} 
-                                                onViewImports={() => {}} 
-                                                onEnterPMMode={() => setIsPMMode(true)} 
-                                                onUpdateLegends={()=>{}} onUpdateStageRules={()=>{}} onUpdateSLARules={()=>{}} onUpdateAutoActions={()=>{}} onUpdateTemplates={()=>{}}
-                                            /> :
-              currentView === 'reports' ? <ReportsView leads={leads} stages={appOptions.stages} legends={Object.values(config.legends).flat()} /> :
-              currentView === 'contacts' ? <ContactsView leads={leads} onUpdateLead={handleUpdateLead} /> :
-              currentView === 'accounts' ? <AccountsView /> :
-              currentView === 'stores' ? <StoresView /> :
-              currentView === 'products' ? <ProductsView /> :
-              currentView === 'orders' ? <OrdersView /> :
-              null
-             }
-         </div>
-      </div>
-
-      {isFlowView && <BulkActionBar selectedCount={selectedLeadIds.size} onClearSelection={() => setSelectedLeadIds(new Set())} onBulkAction={async () => {}} appOptions={appOptions} />}
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-20 right-4 z-40 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg flex items-center justify-center"><Plus size={24} /></button>
-      
-      <AddLeadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleAddLead} appOptions={appOptions} />
-      {selectedLeadForNote && <LeadDetailPanel isOpen={true} onClose={() => setSelectedLeadForNote(null)} lead={selectedLeadForNote} onUpdate={handleUpdateLead} appOptions={appOptions} />}
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
-}
+};
 
 export default App;

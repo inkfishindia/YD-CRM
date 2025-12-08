@@ -213,6 +213,7 @@ export interface IntakeRow {
   contactStatus: string; 
   paymentUpdate: string;
   intent: string;
+  category: string;
   customerType: string;
   leadScore: string;
   remarks: string; 
