@@ -1,8 +1,8 @@
 
 import React from 'react';
-import { Plus, RefreshCw, WifiOff, LogIn, Filter, Search, List, Sun, Kanban, BarChart3, Settings, Import } from 'lucide-react';
+import { Plus, RefreshCw, WifiOff, LogIn, Filter, Search, Sun, BarChart3, Settings, Import, Users, Building2, Store, Package, ShoppingCart, GitMerge, Inbox, CheckCircle2 } from 'lucide-react';
 import { Button } from './ui/Button';
-import { GoogleUser, AppOptions } from '../types';
+import { GoogleUser } from '../types';
 
 interface HeaderProps {
   onAddClick: () => void;
@@ -12,8 +12,10 @@ interface HeaderProps {
   user: GoogleUser | null;
   loading: boolean;
   syncStatus: 'success' | 'error';
-  currentView: 'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'fetch';
-  onViewChange: (view: 'board' | 'list' | 'tasks' | 'reports' | 'settings' | 'fetch') => void;
+  
+  // Revised View Logic - Includes all ViewState types from App.tsx
+  currentView: 'contacts' | 'accounts' | 'flows' | 'stores' | 'products' | 'orders' | 'reports' | 'settings' | 'board' | 'list' | 'tasks' | 'intake';
+  onViewChange: (view: any) => void;
   
   // Search
   searchQuery: string;
@@ -39,55 +41,53 @@ export const Header: React.FC<HeaderProps> = ({
   isFilterActive,
   onToggleFilterPanel
 }) => {
+  
+  const NavButton = ({ id, label, icon: Icon, colorClass = "text-gray-500" }: any) => {
+      const isActive = currentView === id || (id === 'flows' && ['board', 'list', 'tasks'].includes(currentView as any));
+      
+      return (
+        <button 
+          onClick={() => onViewChange(id)}
+          className={`
+            px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap
+            ${isActive 
+                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' 
+                : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
+            }
+          `}
+        >
+          <Icon size={16} className={isActive ? 'text-blue-500' : colorClass} /> 
+          <span className="hidden xl:inline">{label}</span>
+        </button>
+      );
+  }
+
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm transition-all">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         
-        {/* Logo & View Switcher */}
+        {/* Logo & Module Switcher */}
         <div className="flex items-center gap-4 shrink-0">
             <h1 className="text-xl font-bold text-gray-800 tracking-tight hidden md:block">YDS Leads</h1>
             <h1 className="text-xl font-bold text-gray-800 tracking-tight md:hidden">YDS</h1>
             
-            <div className="hidden md:flex bg-gray-100 rounded-lg p-1 gap-1 overflow-x-auto no-scrollbar max-w-[400px] sm:max-w-none">
-                 <button 
-                  onClick={() => onViewChange('tasks')}
-                  className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'tasks' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-                  title="Shortcut: D"
-                >
-                  <Sun size={14} /> <span className="hidden lg:inline">My Day</span>
-                </button>
-                <button 
-                  onClick={() => onViewChange('list')}
-                  className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'list' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-                  title="Shortcut: T"
-                >
-                  <List size={14} /> <span className="hidden lg:inline">Table</span>
-                </button>
-                <button 
-                  onClick={() => onViewChange('board')}
-                  className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'board' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-                  title="Shortcut: P"
-                >
-                  <Kanban size={14} /> <span className="hidden lg:inline">Pipeline</span>
-                </button>
-                <button 
-                  onClick={() => onViewChange('reports')}
-                  className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'reports' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <BarChart3 size={14} /> <span className="hidden lg:inline">Reports</span>
-                </button>
-                <button 
-                  onClick={() => onViewChange('fetch')}
-                  className={`px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap ${currentView === 'fetch' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <Import size={14} /> <span className="hidden lg:inline">Fetch</span>
-                </button>
+            <div className="hidden md:flex bg-gray-100/80 p-1 rounded-lg gap-0.5 overflow-x-auto no-scrollbar max-w-[600px]">
+                <NavButton id="intake" label="Inbox" icon={Inbox} colorClass="text-orange-600" />
+                <div className="w-px bg-gray-300 h-4 self-center mx-1"></div>
+                <NavButton id="contacts" label="Contacts" icon={Users} />
+                <NavButton id="accounts" label="Accounts" icon={Building2} />
+                <div className="w-px bg-gray-300 h-4 self-center mx-1"></div>
+                <NavButton id="flows" label="Flows" icon={GitMerge} colorClass="text-indigo-500" />
+                <div className="w-px bg-gray-300 h-4 self-center mx-1"></div>
+                <NavButton id="stores" label="Stores" icon={Store} />
+                <NavButton id="products" label="Catalog" icon={Package} />
+                <NavButton id="orders" label="Orders" icon={ShoppingCart} />
             </div>
         </div>
 
         {/* Right Actions */}
         <div className="flex items-center gap-2 shrink-0 flex-1 justify-end">
-             <div className="max-w-[250px] w-full hidden md:block relative shrink-0">
+             <div className="max-w-[200px] w-full hidden lg:block relative shrink-0">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input 
                   id="global-search"
@@ -99,6 +99,24 @@ export const Header: React.FC<HeaderProps> = ({
                 />
             </div>
 
+            {/* Admin & Utils */}
+            <div className="flex bg-gray-50 rounded-lg p-0.5 border border-gray-100">
+                <button 
+                  onClick={() => onViewChange('reports')}
+                  className={`p-1.5 rounded-md transition-all ${currentView === 'reports' ? 'bg-white shadow text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                  title="Reports"
+                >
+                  <BarChart3 size={16} />
+                </button>
+                 <button 
+                  onClick={() => onViewChange('settings')}
+                  className={`p-1.5 rounded-md transition-all ${currentView === 'settings' ? 'bg-white shadow text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                  title="Settings"
+                >
+                  <Settings size={16} />
+                </button>
+            </div>
+
             {/* Filter Toggle */}
             <button 
               onClick={onToggleFilterPanel}
@@ -106,44 +124,43 @@ export const Header: React.FC<HeaderProps> = ({
               title="Toggle Filters"
             >
                <Filter size={16} />
-               <span className="hidden lg:inline text-xs font-bold">Filters</span>
                {isFilterActive && (
                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                )}
             </button>
 
-            {/* Sync Status */}
-            <div className="flex items-center justify-center w-8 h-8" title={syncStatus === 'success' ? "Live" : "Offline"}>
+            {/* Sync Status - ENHANCED */}
+            <div className="flex items-center">
               {loading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                <div className="flex items-center gap-2 bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold animate-pulse">
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span className="hidden sm:inline">Syncing...</span>
+                </div>
               ) : syncStatus === 'error' ? (
-                <WifiOff size={16} className="text-red-500" />
+                <button onClick={onRefresh} className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
+                    <WifiOff size={14} />
+                    <span>Sync Error</span>
+                </button>
               ) : (
-                <div className="h-2.5 w-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                <div className="flex items-center gap-2 text-green-600 px-2 py-1.5 rounded-lg text-xs font-bold border border-transparent hover:bg-green-50 hover:border-green-100 transition-all cursor-default" title="System Operational">
+                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                    <span className="hidden lg:inline">Live</span>
+                </div>
               )}
             </div>
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onRefresh}
-              disabled={loading}
-              title="Refresh Data"
-              className="hidden sm:flex"
-            >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            </Button>
-            
-            {/* Settings Button */}
-            <Button
-              variant={currentView === 'settings' ? 'secondary' : 'ghost'}
-              size="icon"
-              onClick={() => onViewChange('settings')}
-              title="Settings"
-              className="hidden md:flex"
-            >
-              <Settings size={18} />
-            </Button>
+            {/* Refresh Button (Only if not loading/error to avoid clutter) */}
+            {syncStatus === 'success' && !loading && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onRefresh}
+                title="Refresh Data"
+                className="hidden sm:flex text-gray-400 hover:text-gray-600"
+              >
+                <RefreshCw size={18} />
+              </Button>
+            )}
 
             {user ? (
               <div className="flex items-center gap-2 ml-1">

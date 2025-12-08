@@ -2,95 +2,91 @@
 
 export interface Lead {
   _rowIndex: number;
-  // Primary
-  leadId: string;        // lead_id
+  // --- TABLE 1: LEADS (Identity) ---
+  leadId: string;        // lead_id (Col 0)
+  contactPerson: string; // name (Col 1)
+  number: string;        // phone (Col 2)
+  email: string;         // email (Col 3)
+  companyName: string;   // company (Col 4)
+  city: string;          // city (Col 5)
+  source: string;        // source_refs (Col 6)
+  // category (Col 7) - Shared with Flow, usually Identity is high-level, Flow is operational
+  createdBy: string;     // created_by (Col 8)
+  tags: string;          // tags (Col 9)
+  identityStatus: string; // Status (Col 10) - Renamed to avoid conflict with Flow status
+  createdAt: string;     // created_at (Col 11)
+  leadScore: string;     // lead_score (Col 12)
+  remarks: string;       // note/description (Col 13)
+  sourceRowId: string;   // source_row_id (Col 14)
+  info: string;          // Info (Col 15)
+
+  // --- TABLE 2: LEAD_FLOWS (Operational) ---
+  flowId: string;        // flow_id (Col 0)
+  // lead_id (Col 1) - Join Key
+  originalChannel: string; // original_channel (Col 2)
+  channel: string;       // channel (Col 3)
+  owner: string;         // owner (Col 4)
+  ydsPoc: string;        // Alias for owner
+  status: string;        // status (Col 5)
+  stage: string;         // stage (Col 6)
+  sourceFlowTag: string; // source_flow_tag (Col 7)
+  // created_at (Col 8) - Flow specific
+  updatedAt: string;     // updated_at (Col 9)
+  startDate: string;     // start_date (Col 10)
+  expectedCloseDate: string; // expected_close_date (Col 11)
+  wonDate: string;       // won_date (Col 12)
+  lostDate: string;      // lost_date (Col 13)
+  lostReason: string;    // lost_reason (Col 14)
+  notes: string;         // notes (Col 15)
+  estimatedQty: number;  // estimated_qty (Col 16)
+  productType: string;   // product_type (Col 17)
+  printType: string;     // print_type (Col 18)
+  priority: string;      // priority (Col 19)
+  contactStatus: string; // contact_status (Col 20)
+  paymentUpdate: string; // payment_update (Col 21)
+  nextAction: string;    // next_action_type (Col 22)
+  nextActionDate: string;// next_action_date (Col 23)
+  intent: string;        // intent (Col 24)
+  category: string;      // category (Col 25) - This drives the UI
+  customerType: string;  // customer_type (Col 26)
+
+  // --- UI / Computed Helpers (Not in Schema directly but mapped) ---
+  date: string;          // Mapped from createdAt for UI display
+  orderInfo: string;     // Often mapped to 'notes' or 'Info'
+  contactAttempts: number; // UI only or mapped to notes parsing
+  lastContactDate: string; // UI only or mapped to updatedAt
+  lastAttemptDate: string; 
   
-  // Identity (2.2)
-  date: string;          // date
-  createdAt: string;     // created_at
-  updatedAt: string;     // updated_at
-  source: string;        // source
-  sourceDetail: string;  // source_detail
-  employeeName: string;  // employee_name
-  companyName: string;   // company_name
-  contactPerson: string; // contact_person
-  number: string;        // number
-  email: string;         // email
-  city: string;          // city
-  intent: string;        // intent
-  tags: string;          // tags (New)
+  // Metrics
+  slaStatus: string;       
+  slaHealth: string;       
+  daysOpen: string;        
+  actionOverdue: string;   
+  firstResponseTime: string; 
+  stageChangedDate: string;  
   
-  // Sales & Product Data
-  orderInfo: string;     // order_information
-  estimatedQty: number;  // estimated_qty
-  productType: string;   // product_type
-  printType: string;     // print_type
-  priority: string;      // priority
-  category: string;      // category
-  customerType: string;  // customer_type
-  ydsPoc: string;        // yds_poc
-  expectedCloseDate: string; // expected_close_date (New for Forecasting)
+  // Dropshipping Specifics (UI Fields, likely mapped to 'notes' or 'Info' in strict schema)
+  platformType: string;      
+  integrationReady: string;  
+  storeUrl: string;          
+  accountCreated: string;    
+  dashboardLinkSent: string; 
+  onboardingStartedDate: string; 
+  activationDate: string;    
   
-  // Status & Stage
-  status: string;        // status (Legacy/Pipeline Stage Status)
-  stage: string;         // stage
-  design: string;        // design
-  contactStatus: string; // contact_status
-  paymentUpdate: string; // payment_update
-  
-  // Engagement
-  contactAttempts: number; // contact_attempts
-  lastContactDate: string; // last_contact_date
-  lastAttemptDate: string; // last_attempt_date
-  nextAction: string;      // next_action
-  nextActionDate: string;  // next_action_date
-  
-  // Outcomes
-  lostReason: string;      // lost_reason
-  wonDate: string;         // won_date
-  lostDate: string;        // lost_date
-  
-  // Metrics & System
-  slaStatus: string;       // sla_status
-  slaHealth: string;       // sla_health
-  daysOpen: string;        // days_open
-  actionOverdue: string;   // action_overdue
-  staleDate: string;       // stale_date
-  firstResponseTime: string; // first_response_time
-  stageChangedDate: string;  // stage_changed_date
-  assignedToHistory: string; // assigned_to_history
-  reassignReason: string;    // reassign_reason
-  
-  // Communications
-  whatsappMessage: string;   // whatsapp_message
-  remarks: string;           // remarks
-  orderNotes?: string;       // order_notes
-  
-  // Dropshipping / Platform (2.5)
-  platformType: string;      // platform_type
-  integrationReady: string;  // integration_ready
-  storeUrl: string;          // store_url
-  accountCreated: string;    // account_created
-  dashboardLinkSent: string; // dashboard_link_sent
-  onboardingStartedDate: string; // onboarding_started_date
-  activationDate: string;    // activation_date
-  
-  // Sampling (2.4)
-  sampleRequired: string;    // sample_required
-  sampleStatus: string;      // sample_status
-  
-  // Workflow
-  workflowType: string;      // workflow_type
-  designsReady: string;      // designs_ready
-  firstProductCreated: string; // first_product_created
-  
-  // Extra / Legacy
-  orderStatus: string;       // order_status
+  // Workflow Specifics
+  sampleRequired: string;    
+  sampleStatus: string;      
+  workflowType: string;      
+  designsReady: string;      
+  firstProductCreated: string; 
+  whatsappMessage: string;
 }
 
 export interface ActivityLog {
   logId: string;
   leadId: string;
+  flowId?: string;
   timestamp: string;
   activityType: string;
   owner: string;
@@ -106,10 +102,11 @@ export interface LegendItem {
   color: string;
   isDefault: boolean;
   isActive: boolean;
-  probability?: number; // 0-100 for Stages
+  probability?: number;
 }
 
 export interface StageRule {
+  flowType?: string; 
   fromStage: string;
   toStage: string;
   trigger: string;
@@ -121,26 +118,118 @@ export interface StageRule {
 export interface SLARule {
   ruleName: string;
   stage: string;
+  channel?: string; 
   condition: string;
-  thresholdDays: number;
+  thresholdHours: number;
   alertLevel: string;
   alertAction: string;
 }
 
 export interface AutoActionRule {
   triggerStage: string;
+  triggerEvent: 'on_enter' | 'on_no_response';
   defaultNextAction: string;
   defaultDays: number;
+  channel?: string;
 }
 
 export interface MessageTemplate {
   id: string;
   stage: string;
   category: string;
-  infoLevel: string;
-  name: string; // Using as 'subject' mostly or display name
+  name: string; 
   subject: string;
   body: string;
+  infoLevel: string;
+}
+
+export interface ConfigStore {
+  legends: Record<string, LegendItem[]>;
+  stageRules: StageRule[];
+  slaRules: SLARule[];
+  autoActions: AutoActionRule[];
+  templates: MessageTemplate[];
+}
+
+// --- INTAKE ENGINE TYPES ---
+
+export interface SourceConfig {
+  layer: string;        // Col 0: Layer
+  sheetId: string;      // Col 1: Sheet ID
+  tab: string;          // Col 2: Tab
+  type: string;         // Col 3: Type
+  tags: string[];       // Col 4: Tags
+}
+
+export interface FieldMapRule {
+  id: string;
+  sourceLayer: string;  // Col 1: source_layer
+  sourceHeader: string; // Col 2: source_header
+  intakeField: string;  // Col 3: intake_field
+  transform: string;    // Col 4: transform
+  isRequired: boolean;  // Col 5: is_required
+  notes: string;
+  fallbackGroup?: string;
+}
+
+export interface IntakeRow {
+  id: string; 
+  sourceLayer: string;
+  sourceSheetId: string;
+  sourceTab: string; 
+  sourceRowIndex: number;
+  
+  // Write-back metadata indices (to write "Imported" status back to source)
+  wbColIndex_Id: number;
+  wbColIndex_Status: number;
+  wbColIndex_ProcessedAt: number;
+  wbColIndex_ProcessedBy: number;
+  
+  // Mapped CRM Fields (Result of transformation)
+  companyName: string;
+  contactPerson: string;
+  number: string;
+  email: string;
+  city: string;
+  estimatedQty: number;
+  productType: string;
+  orderInfo: string;
+  source: string;
+  sourceRowId?: string; 
+  date: string;
+  tags: string; 
+  info: string; 
+  
+  // Flow Fields
+  channel: string;
+  owner: string;
+  status: string; 
+  stage: string;
+  startDate: string;
+  expectedCloseDate: string;
+  notes: string; 
+  printType: string;
+  priority: string;
+  contactStatus: string; 
+  paymentUpdate: string;
+  intent: string;
+  customerType: string;
+  leadScore: string;
+  remarks: string; 
+  
+  // Dropshipping / Platform
+  storeUrl: string;
+  platformType: string;
+  integrationReady: string;
+  nextActionDate: string;
+  
+  // Raw Source Data (for reference)
+  rawData: Record<string, any>;
+  
+  // Validation
+  isValid: boolean;
+  errors: string[];
+  importStatus: 'Pending' | 'Imported' | 'Error';
 }
 
 export interface GoogleUser {
@@ -166,59 +255,45 @@ export interface AppOptions {
   sampleStatus: string[];
   orderStatus: string[];
   nextActionTypes: string[];
-  intents: string[]; // New
-  workflowTypes: string[]; // New
+  intents: string[]; 
+  workflowTypes: string[]; 
 }
 
-// --- CONSTANTS (Defaults / Fallbacks) ---
+// --- CONSTANTS ---
+
+export const MODULE_IDS = {
+  CORE: '1bbzFwbQ3z3lQGZoo6Y3WfvuBRJXlXp8xrf3LuDEGs1A',
+  FLOWS: '1NWuPxl8WeFTSoYgzHrfgLoPXcMkqfsffvspTFTIJ5hE',
+  ACTIVITY: '1Y0x98DnlK4v3rapo4zoCZj-LoFnMcNMUdkaowYsBC38',
+  CONFIG: '1Z3MwuV9los8QAcCFQUgoKtpirCh9IPIkSLCfNHj8Jf4'
+};
 
 export const SHEET_IDS = {
+  MAIN: MODULE_IDS.CORE, 
   TKW: '1sImoVXLvVlv3_LONrDZLm-auzZPJsAE1NmAbxgz3MHU',
-  SLK: '1kJa4O-yMvcmueR2rQEK8Vze12-bf5o0t3ketLReLMx0',
-  ODC: '1UVP93fwaqxjX3TW3P6i0Uax4XeSUr2I1YZQgsJFBzm0',
-  MAIN: '1xfGsXrTU2RfYt56MqXeuXCqiHqAPp3Rh1LNKFryj_c4',
+  DS: '1kJa4O-yMvcmueR2rQEK8Vze12-bf5o0t3ketLReLMx0',
+  AUTO: '1UVP93fwaqxjX3TW3P6i0Uax4XeSUr2I1YZQgsJFBzm0',
   PARTNERS: '1U7R6KHyHoreKNdtzWHJFDyL6dRMZkbj-gyjL71LGJL8'
 };
 
 export type Owner = string;
 export type Stage = string;
 
-// Fallback only. Main logic should use AutoActionRule from Sheet.
 export const AUTO_NEXT_ACTIONS_DEFAULT: Record<string, { action: string, days: number }> = {
   'New': { action: 'Assign Owner', days: 0 },
   'Assigned': { action: 'First Call Attempt', days: 1 },
-  'Contacted': { action: 'Qualify Requirement', days: 2 },
-  'Qualified': { action: 'Create Proposal / Plan', days: 1 },
-  'Sample/Proposal': { action: 'Follow Up on Quote', days: 3 },
-  'Negotiation': { action: 'Finalize Pricing', days: 2 },
-  'Ready to Route': { action: 'Push to OMS/Partner DB', days: 0 },
-  'Won': { action: 'Confirm Payment', days: 0 },
-  'Lost': { action: '', days: 0 }
+  'Won': { action: 'Confirm Payment', days: 0 }
 };
 
-// PRD 4.2 Required Fields Per Stage (Ground Truth)
 export const REQUIRED_FIELDS_BY_STAGE: Record<string, string[]> = {
-  'Assigned': ['ydsPoc', 'priority'], // Must have owner
-  'Contacted': ['contactStatus', 'number'], // Must have tried contacting
-  'Qualified': ['intent', 'category', 'customerType'], // Must know what they want
-  'Sample/Proposal': ['productType', 'estimatedQty'], // Need details to quote (B2B/POD)
-  'Negotiation': ['expectedCloseDate'], // Sales forecast
-  'Ready to Route': ['paymentUpdate', 'city'], // Pre-flight check
-  'Won': ['wonDate', 'paymentUpdate'], // Closure
-  'Lost': ['lostReason']
+  'Assigned': ['ydsPoc', 'priority'],
+  'Qualified': ['intent', 'category'],
+  'Won': ['paymentUpdate']
 };
 
-// PRD 4.1 Allowed & Forbidden Stage Transitions (Strict Pipeline)
-// Prevents skipping critical steps like Qualification
 export const FORBIDDEN_TRANSITIONS: Record<string, string[]> = {
-  'New': ['Qualified', 'Sample/Proposal', 'Negotiation', 'Won', 'Ready to Route'],
-  'Assigned': ['Won', 'Ready to Route', 'Negotiation'],
-  'Contacted': ['Won', 'Ready to Route'],
-  'Qualified': ['New'], // Can't go back to start
-  'Sample/Proposal': ['New', 'Assigned'],
-  'Ready to Route': ['New', 'Assigned', 'Contacted'],
-  'Won': ['New', 'Assigned', 'Contacted', 'Qualified', 'Sample/Proposal', 'Negotiation', 'Lost'], // Locked
-  'Lost': ['New', 'Assigned', 'Contacted', 'Qualified', 'Sample/Proposal', 'Negotiation', 'Won', 'Ready to Route'] // Locked
+  'New': ['Won'],
+  'Won': ['New']
 };
 
 // --- HELPERS ---
@@ -241,22 +316,18 @@ export const getStageColor = (stage: string) => {
   const s = stage?.toLowerCase() || '';
   if (s === 'won') return 'bg-green-50 text-green-700 border-green-200';
   if (s === 'lost') return 'bg-red-50 text-red-700 border-red-200';
-  if (s === 'ready to route') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+  if (s.includes('ready')) return 'bg-indigo-50 text-indigo-700 border-indigo-200';
   if (s === 'negotiation') return 'bg-purple-50 text-purple-700 border-purple-200';
   if (s === 'qualified') return 'bg-blue-50 text-blue-700 border-blue-200';
   return 'bg-gray-50 text-gray-600 border-gray-200';
 };
 
-// --- DATE HELPERS ---
-// App Format: DD/MM/YY
-// Sheet Format: MM/DD/YYYY
-// HTML Input Format: YYYY-MM-DD
-
+// DATE HELPERS
 export const formatDate = (date: Date = new Date()): string => {
   const dd = String(date.getDate()).padStart(2, '0');
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const yy = String(date.getFullYear()).slice(-2);
-  return `${dd}/${mm}/${yy}`; // DD/MM/YY
+  return `${dd}/${mm}/${yy}`; 
 };
 
 export const addDaysToDate = (days: number): string => {
@@ -267,62 +338,41 @@ export const addDaysToDate = (days: number): string => {
 
 export const parseDate = (dateStr: string) => {
     if (!dateStr) return null;
-    
-    // Check for ISO format YYYY-MM-DD (Mock Data or internal safety)
     if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const parts = dateStr.split('-');
         return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     }
-
-    // Assume DD/MM/YY or DD/MM/YYYY or DD-MM-YYYY (App Format)
-    // parts[0] is Day, parts[1] is Month, parts[2] is Year
     const cleanStr = dateStr.replace(/-/g, '/');
     const parts = cleanStr.split('/');
     if (parts.length !== 3) return null;
-
     let year = parseInt(parts[2]);
-    if (year < 100) year += 2000; // Handle YY
-
+    if (year < 100) year += 2000;
     return new Date(year, parseInt(parts[1]) - 1, parseInt(parts[0]));
 };
 
-// CONVERT: App (DD/MM/YY) -> Sheet (MM/DD/YYYY)
 export const toSheetDate = (appDate: string): string => {
     if (!appDate) return '';
     const date = parseDate(appDate);
-    if (!date) return appDate; // Return as is if parse fails
-    
+    if (!date) return appDate;
     const dd = String(date.getDate()).padStart(2, '0');
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const yyyy = date.getFullYear();
     return `${mm}/${dd}/${yyyy}`;
 };
 
-// CONVERT: Sheet (MM/DD/YYYY) -> App (DD/MM/YY)
 export const fromSheetDate = (sheetDate: string): string => {
     if (!sheetDate) return '';
-    
-    // Handle YYYY-MM-DD (ISO) fallback
-    if (sheetDate.match(/^\d{4}-\d{2}-\d{2}/)) {
-        return formatDate(new Date(sheetDate));
-    }
-
+    if (sheetDate.match(/^\d{4}-\d{2}-\d{2}/)) return formatDate(new Date(sheetDate));
     const parts = sheetDate.split(/[-/]/);
     if (parts.length < 3) return sheetDate;
-
-    // Sheet is Month / Day / Year
     const m = parseInt(parts[0]);
     const d = parseInt(parts[1]);
     const y = parseInt(parts[2]);
-    
     if (isNaN(m) || isNaN(d) || isNaN(y)) return sheetDate;
-
-    // Construct valid date object
     const date = new Date(y, m - 1, d);
-    return formatDate(date); // Returns DD/MM/YY
+    return formatDate(date); 
 };
 
-// CONVERT: App (DD/MM/YY) -> Input (YYYY-MM-DD)
 export const toInputDate = (appDate: string | undefined): string => {
     if (!appDate) return '';
     const date = parseDate(appDate);
@@ -333,7 +383,6 @@ export const toInputDate = (appDate: string | undefined): string => {
     return `${yyyy}-${mm}-${dd}`;
 };
 
-// CONVERT: Input (YYYY-MM-DD) -> App (DD/MM/YY)
 export const fromInputDate = (inputDate: string): string => {
     if (!inputDate) return '';
     const parts = inputDate.split('-');
@@ -342,9 +391,8 @@ export const fromInputDate = (inputDate: string): string => {
     return formatDate(date);
 };
 
-// Centralized SLA Logic (Used by Hook and App Update)
+// --- SLA LOGIC ---
 export const determineLeadHealth = (lead: Lead, rules: SLARule[] = []) => {
-    // 1. Won/Lost = Healthy
     if (lead.status === 'Won' || lead.status === 'Lost') {
         return { status: 'Healthy', label: lead.status === 'Won' ? 'Won' : 'Closed', urgency: 'okay', color: 'gray', isOverdue: false };
     }
@@ -352,7 +400,6 @@ export const determineLeadHealth = (lead: Lead, rules: SLARule[] = []) => {
     const today = new Date(); today.setHours(0,0,0,0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     
-    // 2. Next Action Check (Immediate Trigger)
     let actionStatus = 'Healthy';
     let isActionOverdue = false;
     
@@ -368,25 +415,24 @@ export const determineLeadHealth = (lead: Lead, rules: SLARule[] = []) => {
         }
     }
 
-    // 3. Stage Duration Check (SLA Rule)
     let stageStatus = 'Healthy';
     let ruleBreach = false;
     
     const rule = rules.find(r => r.stage.toLowerCase() === (lead.status || '').toLowerCase());
+    
     if (rule) {
         const stageDate = parseDate(lead.stageChangedDate) || parseDate(lead.date) || today;
         const diffTime = Math.abs(today.getTime() - stageDate.getTime());
-        const daysInStage = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const hoursInStage = diffTime / (1000 * 60 * 60);
         
-        if (daysInStage > rule.thresholdDays) {
+        if (hoursInStage > rule.thresholdHours) {
             stageStatus = 'Violated';
             ruleBreach = true;
-        } else if (daysInStage > rule.thresholdDays * 0.8) {
+        } else if (hoursInStage > rule.thresholdHours * 0.8) {
              stageStatus = 'Warning';
         }
     }
 
-    // 4. Merge Logic (Worst Case Wins)
     if (actionStatus === 'Violated' || stageStatus === 'Violated') {
         return { 
             status: 'Violated', 
@@ -407,8 +453,7 @@ export const determineLeadHealth = (lead: Lead, rules: SLARule[] = []) => {
         };
     }
 
-    // 5. Default Healthy (or Scheduled)
-    if (lead.nextActionDate && !isActionOverdue) {
+    if (lead.nextAction && !isActionOverdue) {
         return { status: 'Healthy', label: 'Scheduled', urgency: 'scheduled', color: 'blue', isOverdue: false };
     }
 

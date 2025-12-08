@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Lead } from '../types';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
-import { CheckCircle2, XCircle, Save, Trash2, ArrowLeft, ChevronDown, AlertTriangle, Database, User, Calendar, Phone, Mail, MapPin, Tag, ShoppingBag, MessageSquare, Building2, Pencil, Lock, Table as TableIcon, LayoutGrid, Import, Layers, CheckCircle, UserPlus } from 'lucide-react';
+import { CheckCircle2, XCircle, Save, Trash2, ArrowLeft, ChevronDown, AlertTriangle, Database, User, Calendar, Phone, Mail, MapPin, Tag, ShoppingBag, MessageSquare, Building2, Pencil, Lock, Table as TableIcon, LayoutGrid, Import, Layers, CheckCircle, UserPlus, GitMerge, Box, FileText, ArrowRight, Activity } from 'lucide-react';
 import { addLead } from '../services/sheetService';
 
 interface ImportsViewProps {
@@ -25,7 +25,7 @@ const validateImport = (lead: Lead) => {
     return { isValid: errors.length === 0, errors, warnings };
 };
 
-// Styling helper for inputs (Duplicated for portability/self-containment)
+// Styling helper for inputs
 const getInputClass = (val: string | number | undefined, required = false, warning = false) => {
     if (!val && required) return "bg-red-50 border-red-300 focus:border-red-500 focus:ring-red-200 placeholder-red-400";
     if (!val && warning) return "bg-yellow-50 border-yellow-300 focus:border-yellow-500 focus:ring-yellow-200 placeholder-yellow-500";
@@ -178,30 +178,96 @@ const ImportCard: React.FC<{
     isSaving: boolean;
 }> = ({ lead, isSelected, onToggleSelect, onImport, onDiscard, onUpdate, isSaving }) => {
     const [expanded, setExpanded] = useState(false);
+    const [activeTab, setActiveTab] = useState<'identity' | 'flow'>('identity');
     const { isValid, errors, warnings } = validateImport(lead);
 
     const handleChange = (field: keyof Lead, value: string) => {
         onUpdate({ ...lead, [field]: value });
     };
 
-    // Define fields with readOnly flag for Date and Source
-    const fields = [
-        { key: 'date', label: 'Date', icon: Calendar, type: 'text', readOnly: true },
-        { key: 'source', label: 'Source', icon: Database, type: 'text', readOnly: true },
+    // RAW SOURCE DATA (Derived from Lead structure if rawData isn't strictly available in Lead type, 
+    // but in a real app Lead might have a .rawData property. We simulate by showing non-empty fields)
+    const sourceFields = [
+        { label: 'Company', val: lead.companyName },
+        { label: 'Contact', val: lead.contactPerson },
+        { label: 'Phone', val: lead.number },
+        { label: 'Email', val: lead.email },
+        { label: 'Raw Source', val: lead.source },
+        { label: 'Imported Date', val: lead.date },
+        { label: 'Raw Note', val: lead.remarks },
+        { label: 'City', val: lead.city },
+        { label: 'Qty', val: lead.estimatedQty },
+        { label: 'Product', val: lead.productType },
+        { label: 'Requirements', val: lead.orderInfo },
+        { label: 'Platform', val: lead.platformType },
+        { label: 'Store URL', val: lead.storeUrl },
+    ].filter(f => f.val !== undefined && f.val !== '' && f.val !== 0);
+
+    // SECTION 1: IDENTITY (Leads Sheet)
+    const identityFields = [
+        { key: 'companyName', label: 'Company Name', icon: Building2, type: 'text', required: true, colSpan: 2 },
         { key: 'contactPerson', label: 'Contact Name', icon: User, type: 'text' },
-        { key: 'number', label: 'Phone', icon: Phone, type: 'tel' },
+        { key: 'phone', label: 'Phone', icon: Phone, type: 'tel', mapKey: 'number' },
         { key: 'email', label: 'Email', icon: Mail, type: 'email' },
         { key: 'city', label: 'City', icon: MapPin, type: 'text' },
-        { key: 'category', label: 'Category', icon: Tag, type: 'text' },
-        { key: 'estimatedQty', label: 'Est. Qty', icon: ShoppingBag, type: 'number' },
-        { key: 'remarks', label: 'Remarks', icon: MessageSquare, type: 'text' },
+        { key: 'source', label: 'Source', icon: Database, type: 'text', readOnly: true },
+        { key: 'leadScore', label: 'Lead Score', icon: Activity, type: 'number' },
+        { key: 'tags', label: 'Tags', icon: Tag, type: 'text' },
     ];
+
+    // SECTION 2: FLOW (Lead_Flows Sheet)
+    const flowFields = [
+        { key: 'category', label: 'Category', icon: Layers, type: 'text' },
+        { key: 'status', label: 'Initial Status', icon: CheckCircle, type: 'text', readOnly: true }, // Default 'New'
+        { key: 'estimatedQty', label: 'Est. Qty', icon: Box, type: 'number' },
+        { key: 'productType', label: 'Product Type', icon: ShoppingBag, type: 'text' },
+        { key: 'priority', label: 'Priority', icon: AlertTriangle, type: 'text' },
+        { key: 'owner', label: 'Assigned To', icon: UserPlus, type: 'text', mapKey: 'ydsPoc' },
+        { key: 'remarks', label: 'Remarks/Notes', icon: MessageSquare, type: 'text', colSpan: 2 },
+    ];
+
+    const renderInput = (f: any) => {
+        const fieldKey = f.mapKey || f.key;
+        const val = lead[fieldKey as keyof Lead];
+        let isWarning = false;
+        
+        if (f.required && !val) isWarning = true;
+        if (fieldKey === 'number' && !val && !lead.email) isWarning = true;
+
+        return (
+            <div key={f.key} className={`flex flex-col ${f.colSpan ? `col-span-${f.colSpan}` : ''}`}>
+                <label className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1 truncate font-bold uppercase">
+                    {f.label} 
+                    {f.readOnly && <Lock size={8} className="text-gray-300"/>}
+                    {f.required && <span className="text-red-500">*</span>}
+                </label>
+                
+                {f.readOnly ? (
+                    <div className="w-full text-xs border border-transparent bg-gray-100 rounded px-2 py-1.5 text-gray-500 truncate cursor-not-allowed select-none">
+                        {val as string || '-'}
+                    </div>
+                ) : (
+                    <input 
+                        type={f.type}
+                        className={`
+                            w-full text-xs rounded px-2 py-1.5 outline-none border focus:ring-2
+                            ${getInputClass(val as string, f.required, isWarning)}
+                        `}
+                        value={val as string || ''}
+                        onChange={(e) => handleChange(fieldKey as keyof Lead, e.target.value)}
+                        placeholder={isWarning ? "Required..." : "Empty"}
+                    />
+                )}
+            </div>
+        );
+    };
 
     return (
         <div 
             className={`
                 relative bg-white rounded-xl border transition-all duration-200 flex flex-col group
                 ${isSelected ? 'border-blue-400 ring-1 ring-blue-100 shadow-md' : 'border-gray-200 shadow-sm hover:shadow-md'}
+                ${expanded ? 'col-span-full lg:col-span-2 row-span-2' : ''} 
             `}
         >
             {/* Header Area (Always Visible) */}
@@ -227,9 +293,13 @@ const ImportCard: React.FC<{
                         </div>
                         
                         <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                            <span className="truncate max-w-[120px]">{lead.contactPerson || <span className="text-orange-400">No Contact</span>}</span>
-                            <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                            <span>{lead.date}</span>
+                            <span className="truncate max-w-[120px] font-medium">{lead.contactPerson || <span className="text-orange-400">No Contact</span>}</span>
+                            {lead.estimatedQty > 0 && (
+                                <>
+                                    <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                    <span className="font-mono text-gray-600">{lead.estimatedQty} units</span>
+                                </>
+                            )}
                         </div>
 
                         {/* Quick validation indicator */}
@@ -239,14 +309,9 @@ const ImportCard: React.FC<{
                                     <XCircle size={10}/> Data Missing
                                 </span>
                             )}
-                            {warnings.length > 0 && isValid && (
-                                <span className="text-[10px] bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-100 flex items-center gap-1 font-medium">
-                                    <AlertTriangle size={10}/> {warnings.length} Warning{warnings.length > 1 ? 's' : ''}
-                                </span>
-                            )}
-                            {isValid && warnings.length === 0 && (
+                            {isValid && (
                                 <span className="text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-100 flex items-center gap-1 font-medium">
-                                    <CheckCircle2 size={10}/> Ready
+                                    <CheckCircle2 size={10}/> Ready to Import
                                 </span>
                             )}
                         </div>
@@ -258,101 +323,82 @@ const ImportCard: React.FC<{
                 </div>
             </div>
 
-            {/* Expanded Details - Editable Form */}
+            {/* Expanded Details - 2 Column Layout */}
             {expanded && (
-                <div className="px-4 pb-4 border-t border-gray-100 bg-gray-50/50 rounded-b-xl animate-fade-in" onClick={e => e.stopPropagation()}>
-                    <div className="pt-3 mb-3">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Pencil size={12} className="text-gray-400" />
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Review & Edit Details</p>
-                        </div>
-
-                        {/* Special Company Name Field */}
-                        <div className="mb-3">
-                            <label className="text-[10px] text-gray-500 font-bold mb-1 flex items-center gap-1">
-                                <Building2 size={10}/> Company Name <span className="text-red-500">*</span>
-                            </label>
-                            <input 
-                                className={`w-full text-xs font-bold rounded px-2 py-1.5 outline-none border focus:ring-2 ${getInputClass(lead.companyName, true)}`}
-                                value={lead.companyName || ''}
-                                onChange={(e) => handleChange('companyName', e.target.value)}
-                                placeholder="Required"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-y-3 gap-x-2">
-                            {fields.map(f => {
-                                const val = lead[f.key as keyof Lead];
-                                // Critical Warning Logic for specific fields
-                                let isWarning = false;
-                                if (f.key === 'contactPerson' && !val) isWarning = true;
-                                if (f.key === 'number' && !val && !lead.email) isWarning = true;
-                                if (f.key === 'email' && !val && !lead.number) isWarning = true;
-                                
-                                return (
-                                    <div key={f.key} className="flex flex-col">
-                                        <label className="text-[10px] text-gray-500 mb-0.5 flex items-center gap-1 truncate">
-                                            <f.icon size={10} /> {f.label} 
-                                            {f.readOnly && <Lock size={8} className="text-gray-300"/>}
-                                        </label>
-                                        
-                                        {f.readOnly ? (
-                                            <div className="w-full text-xs border border-transparent bg-gray-100 rounded px-2 py-1.5 text-gray-500 truncate cursor-not-allowed select-none">
-                                                {val as string || '-'}
-                                            </div>
-                                        ) : (
-                                            <input 
-                                                type={f.type}
-                                                className={`
-                                                    w-full text-xs rounded px-2 py-1.5 outline-none border focus:ring-2
-                                                    ${getInputClass(val as string, false, isWarning)}
-                                                `}
-                                                value={val as string || ''}
-                                                onChange={(e) => handleChange(f.key as keyof Lead, e.target.value)}
-                                                placeholder={isWarning ? "Required..." : "Empty"}
-                                            />
-                                        )}
-                                    </div>
-                                )
-                            })}
+                <div className="border-t border-gray-100 bg-white rounded-b-xl animate-fade-in cursor-default flex flex-col md:flex-row h-96" onClick={e => e.stopPropagation()}>
+                    
+                    {/* LEFT COL: SOURCE DATA (Read Only) */}
+                    <div className="w-full md:w-1/3 bg-gray-50 p-4 border-r border-gray-200 overflow-y-auto custom-scrollbar">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <FileText size={12}/> Original Source Data
+                        </h4>
+                        <div className="space-y-2">
+                            {sourceFields.map((f, i) => (
+                                <div key={i} className="text-xs">
+                                    <span className="text-gray-400 block text-[10px] font-bold uppercase">{f.label}</span>
+                                    <span className="text-gray-700 font-medium break-words bg-white border border-gray-200 px-2 py-1 rounded block">{f.val}</span>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
-                    {/* Validation Messages */}
-                    {(errors.length > 0 || warnings.length > 0) && (
-                        <div className="mb-4 space-y-1">
-                            {errors.map((e, i) => (
-                                <div key={i} className="text-xs text-red-600 bg-red-50 p-1.5 rounded flex items-center gap-2 border border-red-100">
-                                    <XCircle size={12} /> {e}
-                                </div>
-                            ))}
-                            {warnings.map((w, i) => (
-                                <div key={i} className="text-xs text-yellow-700 bg-yellow-50 p-1.5 rounded flex items-center gap-2 border border-yellow-100">
-                                    <AlertTriangle size={12} /> {w}
-                                </div>
-                            ))}
+                    {/* RIGHT COL: IMPORT CONFIG (Tabs) */}
+                    <div className="w-full md:w-2/3 flex flex-col">
+                        {/* Tabs */}
+                        <div className="flex border-b border-gray-200">
+                            <button 
+                                onClick={() => setActiveTab('identity')}
+                                className={`flex-1 py-2.5 text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors ${activeTab === 'identity' ? 'text-blue-600 bg-blue-50/50 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                <User size={12}/> Lead Identity (Table 1)
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('flow')}
+                                className={`flex-1 py-2.5 text-xs font-bold uppercase flex items-center justify-center gap-2 transition-colors ${activeTab === 'flow' ? 'text-indigo-600 bg-indigo-50/50 border-b-2 border-indigo-600' : 'text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                <GitMerge size={12}/> Lead Flow (Table 2)
+                            </button>
                         </div>
-                    )}
 
-                    <div className="flex gap-2 justify-end pt-2 border-t border-gray-200">
-                        <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            className="text-red-500 hover:bg-red-50 hover:text-red-600 h-8"
-                            onClick={onDiscard}
-                        >
-                            Discard
-                        </Button>
-                        <Button 
-                            size="sm" 
-                            variant={isValid ? "primary" : "secondary"} 
-                            disabled={!isValid || isSaving}
-                            onClick={onImport}
-                            className={isValid ? "bg-green-600 hover:bg-green-700 h-8 shadow-sm" : "h-8 opacity-50"}
-                            icon={isValid ? <Save size={14}/> : <XCircle size={14}/>}
-                        >
-                            {isValid ? "Import This Lead" : "Fix Before Import"}
-                        </Button>
+                        {/* Form Area */}
+                        <div className="flex-1 p-4 overflow-y-auto custom-scrollbar">
+                            {activeTab === 'identity' ? (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {identityFields.map(f => renderInput(f))}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {flowFields.map(f => renderInput(f))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="p-3 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
+                            <div className="text-xs">
+                                {errors.length > 0 && <span className="text-red-500 font-bold">{errors.length} Errors</span>}
+                            </div>
+                            <div className="flex gap-2">
+                                <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="text-red-500 hover:bg-red-50 hover:text-red-600 h-8"
+                                    onClick={onDiscard}
+                                >
+                                    Discard
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    variant={isValid ? "primary" : "secondary"} 
+                                    disabled={!isValid || isSaving}
+                                    onClick={onImport}
+                                    className={isValid ? "bg-green-600 hover:bg-green-700 h-8 shadow-sm" : "h-8 opacity-50"}
+                                    icon={isValid ? <Save size={14}/> : <XCircle size={14}/>}
+                                >
+                                    {isValid ? "Import to CRM" : "Complete Data"}
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -364,7 +410,7 @@ export const ImportsView: React.FC<ImportsViewProps> = ({ importedLeads, onClear
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(importedLeads.map(l => l.leadId)));
   const [isSaving, setIsSaving] = useState(false);
   const [leads, setLeads] = useState<Lead[]>(importedLeads); 
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table'); // Default to Table
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid'); // Default to Grid for new layout
 
   // Confirmation Modal State
   const [confirmState, setConfirmState] = useState<{
@@ -478,18 +524,18 @@ export const ImportsView: React.FC<ImportsViewProps> = ({ importedLeads, onClear
             <div className="flex items-center gap-3 w-full sm:w-auto">
                 <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
                     <button 
-                        onClick={() => setViewMode('table')}
-                        className={`p-1.5 rounded transition-all ${viewMode === 'table' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        title="Table View"
-                    >
-                        <TableIcon size={16} />
-                    </button>
-                    <button 
                         onClick={() => setViewMode('grid')}
                         className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                         title="Card View"
                     >
                         <LayoutGrid size={16} />
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('table')}
+                        className={`p-1.5 rounded transition-all ${viewMode === 'table' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        title="Table View"
+                    >
+                        <TableIcon size={16} />
                     </button>
                 </div>
 
@@ -522,7 +568,7 @@ export const ImportsView: React.FC<ImportsViewProps> = ({ importedLeads, onClear
                 </div>
             ) : viewMode === 'grid' ? (
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
-                    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 auto-rows-min">
                         {leads.map(lead => (
                             <ImportCard 
                                 key={lead.leadId} 

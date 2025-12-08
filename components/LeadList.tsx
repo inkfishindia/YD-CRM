@@ -1,10 +1,9 @@
 
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { Lead, getPriorityColor, getStageColor, AppOptions, AutoActionRule, MessageTemplate, StageRule, SLARule, AUTO_NEXT_ACTIONS_DEFAULT, addDaysToDate, parseDate, getPriorityColor as getPC, REQUIRED_FIELDS_BY_STAGE, GoogleUser, formatDate } from '../types';
 import { LeadDetailPanel } from './LeadDetailPanel';
 import { useLeadCalculations } from '../hooks/useLeadCalculations';
-import { AlertCircle, ShieldAlert, CheckCircle2, Calendar, MapPin, Info, MessageSquare, AlertTriangle, Layers, Edit2, ChevronDown, ListTodo, Phone, MessageCircle, MoreHorizontal, ArrowRight, Clock, Box, Globe, Copy, Trash2, StickyNote, Mail, UserX } from 'lucide-react';
+import { AlertCircle, ShieldAlert, CheckCircle2, Calendar, MapPin, Info, MessageSquare, AlertTriangle, Layers, Edit2, ChevronDown, ListTodo, Phone, MessageCircle, MoreHorizontal, ArrowRight, Clock, Box, Globe, Copy, Trash2, StickyNote, Mail, UserX, Laptop, Store, ShoppingBag } from 'lucide-react';
 import { Badge } from './ui/Badge';
 import { TemplateModal } from './TemplateModal';
 import { NextActionInput } from './NextActionInput';
@@ -154,6 +153,9 @@ const LeadRow: React.FC<{
 }> = ({ lead, slaRules, stageRules, autoActions, appOptions, isSelected, onToggleSelect, onClick, onUpdate, onContextMenu, onLogActivity, onOpenTemplate, user }) => {
     const { urgencyLevel, isOverdue, signalColor } = useLeadCalculations(lead, slaRules);
     
+    // Logic to distinguish Dropship vs B2B
+    const isDropship = lead.category?.toLowerCase().includes('drop') || lead.intent?.toLowerCase().includes('drop');
+
     // Visuals - Urgency Background Tint
     let rowClass = "border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors text-xs group cursor-pointer";
     if (lead.status === 'Lost') rowClass += " bg-gray-50 opacity-60 grayscale";
@@ -282,23 +284,52 @@ const LeadRow: React.FC<{
                 </div>
             </td>
 
+            {/* POLYMORPHIC COLUMN 1: Category / Platform */}
             <td className="px-3 py-3 text-center">
                  <div className="inline-flex flex-col items-center gap-1">
                     <Badge variant="neutral" className="whitespace-nowrap">{lead.category}</Badge>
-                    <span className={`text-[9px] font-bold px-1 rounded border ${getPC(lead.priority)}`}>{lead.priority}</span>
+                    {isDropship ? (
+                        lead.platformType && <span className="text-[9px] text-gray-500 flex items-center gap-1"><Laptop size={8}/> {lead.platformType}</span>
+                    ) : (
+                        <span className={`text-[9px] font-bold px-1 rounded border ${getPC(lead.priority)}`}>{lead.priority}</span>
+                    )}
                  </div>
             </td>
 
+            {/* POLYMORPHIC COLUMN 2: Contact Attempts or Store Status */}
             <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
-                 <div className="flex items-center gap-1 justify-center">
-                    <button onClick={() => handleQuickAttempt('Call')} className="p-1 hover:bg-green-100 rounded text-gray-400 hover:text-green-600" title="Call"><Phone size={12}/></button>
-                    <button onClick={() => handleQuickAttempt('WhatsApp')} className="p-1 hover:bg-green-100 rounded text-gray-400 hover:text-green-600" title="WhatsApp"><MessageCircle size={12}/></button>
-                    <span className="text-[10px] font-bold text-gray-500 ml-1">({lead.contactAttempts || 0})</span>
-                 </div>
+                 {isDropship ? (
+                     <div className="flex flex-col items-center">
+                         {lead.storeUrl ? (
+                             <a href={`https://${lead.storeUrl}`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] flex items-center gap-1">
+                                 <Globe size={10}/> Store
+                             </a>
+                         ) : <span className="text-[10px] text-gray-400">No URL</span>}
+                         {lead.integrationReady === 'Yes' && <span className="text-[9px] text-green-600 font-bold">Linked</span>}
+                     </div>
+                 ) : (
+                    <div className="flex items-center gap-1 justify-center">
+                        <button onClick={() => handleQuickAttempt('Call')} className="p-1 hover:bg-green-100 rounded text-gray-400 hover:text-green-600" title="Call"><Phone size={12}/></button>
+                        <button onClick={() => handleQuickAttempt('WhatsApp')} className="p-1 hover:bg-green-100 rounded text-gray-400 hover:text-green-600" title="WhatsApp"><MessageCircle size={12}/></button>
+                        <span className="text-[10px] font-bold text-gray-500 ml-1">({lead.contactAttempts || 0})</span>
+                    </div>
+                 )}
             </td>
 
+            {/* POLYMORPHIC COLUMN 3: Value or Requirements */}
             <td className="px-3 py-3 text-right font-mono font-medium text-gray-700">
-                {lead.estimatedQty > 0 ? lead.estimatedQty.toLocaleString() : '-'}
+                {isDropship ? (
+                    lead.orderInfo ? (
+                        <span className="text-[10px] text-gray-500 truncate max-w-[100px] block" title={lead.orderInfo}>{lead.orderInfo}</span>
+                    ) : <span className="text-gray-300">-</span>
+                ) : (
+                    lead.estimatedQty > 0 ? (
+                        <div className="flex flex-col items-end">
+                            <span>{lead.estimatedQty.toLocaleString()}</span>
+                            <span className="text-[9px] text-gray-400 font-sans">{lead.productType}</span>
+                        </div>
+                    ) : '-'
+                )}
             </td>
 
             <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
@@ -625,9 +656,9 @@ export const LeadList: React.FC<LeadListProps> = ({
                     {onToggleSelect && <th className="px-4 py-3 w-10"></th>}
                     <th className="px-3 py-3 w-20 text-center">Age/SLA</th>
                     <th className="px-3 py-3 w-64">Lead Identity</th>
-                    <th className="px-3 py-3 w-32 text-center">Type / Pri</th>
-                    <th className="px-3 py-3 w-32 text-center">Attempts</th>
-                    <th className="px-3 py-3 w-24 text-right">Est. Qty</th>
+                    <th className="px-3 py-3 w-32 text-center">Context</th>
+                    <th className="px-3 py-3 w-32 text-center">Comms</th>
+                    <th className="px-3 py-3 w-24 text-right">Details</th>
                     <th className="px-3 py-3 w-32">Stage</th>
                     <th className="px-3 py-3 w-32">Owner</th>
                     <th className="px-3 py-3 w-64">Next Action</th>

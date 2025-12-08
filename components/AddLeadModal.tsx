@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { Lead, AppOptions, formatDate, toInputDate, fromInputDate } from '../types';
 import { Modal } from './ui/Modal';
@@ -27,7 +26,6 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({ isOpen, onClose, onS
     date: formatDate(), // DD/MM/YY
     createdAt: formatDate(),
     source: 'TKW',
-    employeeName: '',
     companyName: '',
     contactPerson: '',
     number: '',
@@ -196,11 +194,6 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({ isOpen, onClose, onS
                         type="number"
                         value={formData.estimatedQty}
                         onChange={(e) => handleChange('estimatedQty', parseInt(e.target.value) || 0)}
-                    />
-                    <Input
-                        label="Employee (Created By)"
-                        value={formData.employeeName}
-                        onChange={(e) => handleChange('employeeName', e.target.value)}
                     />
                  </div>
 
