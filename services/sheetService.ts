@@ -42,8 +42,8 @@ export const SYSTEM_SHEET_NAMES = [
 ];
 
 export const SOURCE_CONFIG: Record<string, { id: string, sheetName: string }> = {
-    'TKW': { id: '1sImoVXLvVlv3_LONrDZLm-auzZPJsAE1NmAbxgz3MHU', sheetName: 'Sheet1' },
-    'Commerce': { id: '1kJa4O-yMvcmueR2rQEK8Vze12-bf5o0t3ketLReLMx0', sheetName: 'Leads' }
+    'TKW': { id: '1sImoVXLvVlv3_LONrDZLm-auzZPJsAE1NmAbxgz3MHU', sheetName: 'TKW Lead sheet' },
+    'Commerce': { id: '1kJa4O-yMvcmueR2rQEK8Vze12-bf5o0t3ketLReLMx0', sheetName: 'Auto New Lead' }
 };
 
 // --- Types ---

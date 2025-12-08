@@ -9,7 +9,7 @@ import { AddSourceModal } from './AddSourceModal';
 import { 
     AlertTriangle, RefreshCw, UploadCloud, Save, Trash2, CheckCircle2, 
     ChevronDown, ChevronUp, Mail, Phone, Lock, Filter, LayoutGrid, 
-    Table as TableIcon, XCircle, FileSpreadsheet, Play, Plus, Settings, Loader2, BookOpen, Columns, UserPlus, ArrowRight, AlertOctagon
+    Table as TableIcon, XCircle, FileSpreadsheet, Play, Plus, Settings, Loader2, BookOpen, Columns, UserPlus, ArrowRight, AlertOctagon, Database
 } from 'lucide-react';
 
 interface IntakeInboxProps {
@@ -45,9 +45,143 @@ const checkDuplicate = (row: IntakeRow, db: Lead[]): Lead | undefined => {
     });
 };
 
-// --- COMPONENT: Expandable Table Row ---
+// --- SUB-COMPONENT: Expanded Row Editor (Split View) ---
+const ExpandedRowEditor: React.FC<{
+    row: IntakeRow;
+    headers: string[];
+    onUpdate: (r: IntakeRow) => void;
+    onImport: () => void;
+    onDiscard: () => void;
+    isSaving: boolean;
+}> = ({ row, headers, onUpdate, onImport, onDiscard, isSaving }) => {
+    
+    const handleChange = (field: keyof IntakeRow, value: any) => {
+        const next = { ...row, [field]: value };
+        // Simple re-validation logic
+        const hasIdentity = !!next.companyName || !!next.contactPerson;
+        const errors = hasIdentity ? [] : ["Identity missing"];
+        onUpdate({ ...next, isValid: errors.length === 0, errors });
+    };
+
+    const crmFields = [
+        { key: 'companyName', label: 'Company Name', required: true },
+        { key: 'contactPerson', label: 'Contact Person' },
+        { key: 'number', label: 'Phone' },
+        { key: 'email', label: 'Email' },
+        { key: 'city', label: 'City' },
+        { key: 'estimatedQty', label: 'Est. Qty', type: 'number' },
+        { key: 'productType', label: 'Product Type' },
+        { key: 'owner', label: 'Owner' },
+        { key: 'remarks', label: 'Remarks', type: 'textarea' },
+    ];
+
+    // Source Data - Use headers to drive display if available
+    const sourceDataDisplay = headers.length > 0 ? headers.map(h => ({ key: h, value: row.rawData[h] })) : Object.entries(row.rawData).map(([k, v]) => ({ key: k, value: v }));
+
+    return (
+        <div className="bg-gray-50/80 p-6 border-b border-gray-200 shadow-inner">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                {/* Left: Source Data (Read Only) */}
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm flex flex-col h-full max-h-[500px]">
+                    <div className="bg-gray-100 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                        <h4 className="text-xs font-bold uppercase text-gray-500 flex items-center gap-2">
+                            <Database size={12}/> Source Data ({row.sourceLayer})
+                        </h4>
+                        <span className="text-[10px] bg-white border border-gray-300 px-1.5 rounded text-gray-500 font-mono">Row {row.sourceRowIndex}</span>
+                    </div>
+                    <div className="overflow-y-auto p-0 flex-1 custom-scrollbar">
+                        <table className="w-full text-xs">
+                            <tbody className="divide-y divide-gray-100">
+                                {sourceDataDisplay.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2.5 font-medium text-gray-500 w-1/3 border-r border-gray-100 bg-gray-50/30 text-right truncate select-none" title={item.key}>{item.key}</td>
+                                        <td className="px-4 py-2.5 text-gray-800 font-mono break-words">{item.value !== null && item.value !== undefined ? String(item.value) : <span className="text-gray-300 italic">null</span>}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Right: CRM Mapping (Editable) */}
+                <div className="flex flex-col h-full">
+                    <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-xs font-bold uppercase text-gray-500 flex items-center gap-2">
+                            <LayoutGrid size={12}/> CRM Data Mapping
+                        </h4>
+                        {!row.isValid && <span className="text-[10px] text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded font-bold flex items-center gap-1"><AlertTriangle size={10}/> Validation Error</span>}
+                    </div>
+                    
+                    <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm flex-1 space-y-3 overflow-y-auto custom-scrollbar">
+                        
+                        {/* Static Metadata */}
+                        <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-gray-100">
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Date</label>
+                                <div className="text-sm font-medium text-gray-700">{row.date}</div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Source</label>
+                                <div className="text-sm font-medium text-gray-700">{row.source}</div>
+                            </div>
+                        </div>
+
+                        {crmFields.map(field => {
+                            const val = row[field.key as keyof IntakeRow];
+                            const isMissing = field.required && !val;
+                            return (
+                                <div key={field.key} className="flex items-center gap-3">
+                                    <label className="w-28 text-xs font-bold text-gray-500 text-right flex-shrink-0 truncate" title={field.label}>
+                                        {field.label} {field.required && <span className="text-red-500">*</span>}
+                                    </label>
+                                    
+                                    {field.type === 'textarea' ? (
+                                        <textarea
+                                            className="flex-1 text-sm border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 border min-h-[60px]"
+                                            value={val as string || ''}
+                                            onChange={e => handleChange(field.key as keyof IntakeRow, e.target.value)}
+                                            placeholder={`Enter ${field.label}...`}
+                                        />
+                                    ) : (
+                                        <input
+                                            type={field.type || 'text'}
+                                            className={`flex-1 text-sm rounded-lg px-3 py-1.5 outline-none border focus:ring-2 transition-all ${isMissing ? 'border-red-300 bg-red-50' : 'border-gray-300 focus:border-blue-500'}`}
+                                            value={val as string || (field.type === 'number' && !val ? 0 : '')}
+                                            onChange={e => handleChange(field.key as keyof IntakeRow, field.type === 'number' ? parseInt(e.target.value) : e.target.value)}
+                                            placeholder={isMissing ? "Required" : ""}
+                                        />
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
+                        <Button variant="ghost" onClick={onDiscard} className="text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-transparent">
+                            Ignore Row
+                        </Button>
+                        <Button 
+                            variant="primary" 
+                            onClick={onImport} 
+                            disabled={!row.isValid || isSaving}
+                            isLoading={isSaving}
+                            className={row.isValid ? "bg-blue-600 hover:bg-blue-700" : "opacity-50"}
+                        >
+                            Save & Import
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENT: Expandable Table Row Wrapper ---
 const IntakeTableRow: React.FC<{
     row: IntakeRow;
+    headers: string[];
     isSelected: boolean;
     onToggleSelect: () => void;
     onUpdate: (r: IntakeRow) => void;
@@ -55,21 +189,20 @@ const IntakeTableRow: React.FC<{
     onDiscard: () => void;
     isSaving: boolean;
     duplicateMatch?: Lead;
-}> = ({ row, isSelected, onToggleSelect, onUpdate, onImport, onDiscard, isSaving, duplicateMatch }) => {
+}> = ({ row, headers, isSelected, onToggleSelect, onUpdate, onImport, onDiscard, isSaving, duplicateMatch }) => {
     const [expanded, setExpanded] = useState(false);
 
-    const handleChange = (field: keyof IntakeRow, val: any) => {
-        const next = { ...row, [field]: val };
-        // Simple re-validation logic
-        const hasIdentity = !!next.companyName || !!next.contactPerson;
-        const errors = hasIdentity ? [] : ["Identity missing"];
-        onUpdate({ ...next, isValid: errors.length === 0, errors });
-    };
-
-    // Smart styling for input validation state
+    // Smart styling for input validation state (Collapsed View)
     const getInputClass = (val: any, required = false) => {
         if (required && !val) return "bg-red-50 border-red-300 focus:ring-red-200 placeholder-red-400";
         return "bg-transparent hover:bg-white focus:bg-white border-transparent hover:border-gray-300 focus:border-blue-500";
+    };
+
+    const handleChange = (field: keyof IntakeRow, val: any) => {
+        const next = { ...row, [field]: val };
+        const hasIdentity = !!next.companyName || !!next.contactPerson;
+        const errors = hasIdentity ? [] : ["Identity missing"];
+        onUpdate({ ...next, isValid: errors.length === 0, errors });
     };
 
     // Calculate Status Icon
@@ -90,7 +223,6 @@ const IntakeTableRow: React.FC<{
     return (
         <>
             <tr 
-                onClick={() => setExpanded(!expanded)}
                 className={`
                     group transition-colors border-b border-gray-100 last:border-0 text-sm cursor-pointer relative
                     ${isSelected ? 'bg-blue-50/60' : 'hover:bg-gray-50'} 
@@ -108,18 +240,17 @@ const IntakeTableRow: React.FC<{
                 </td>
 
                 {/* Status Icon */}
-                <td className="px-2 py-3 w-12 text-center">
+                <td className="px-2 py-3 w-12 text-center" onClick={() => setExpanded(!expanded)}>
                     <div className="flex justify-center items-center h-full" title={statusTitle}>
                         {statusIcon}
                     </div>
                 </td>
 
-                {/* Date (Fixed Width) */}
-                <td className="px-2 py-3 w-24 text-xs font-mono text-gray-500 truncate">
+                {/* Collapsed View Columns */}
+                <td className="px-2 py-3 w-24 text-xs font-mono text-gray-500 truncate" onClick={() => setExpanded(!expanded)}>
                     {row.date}
                 </td>
 
-                {/* Company (Flexible) */}
                 <td className="px-2 py-3 min-w-[180px] max-w-[250px]" onClick={e => e.stopPropagation()}>
                     <input 
                         className={`w-full text-sm rounded px-2 py-1 outline-none border transition-all ${getInputClass(row.companyName, true)}`}
@@ -129,7 +260,6 @@ const IntakeTableRow: React.FC<{
                     />
                 </td>
 
-                {/* Contact Person (Flexible) */}
                 <td className="px-2 py-3 min-w-[140px] max-w-[200px]" onClick={e => e.stopPropagation()}>
                     <input 
                         className={`w-full text-sm rounded px-2 py-1 outline-none border transition-all ${getInputClass(row.contactPerson)}`}
@@ -139,7 +269,6 @@ const IntakeTableRow: React.FC<{
                     />
                 </td>
 
-                {/* Phone (Fixed) */}
                 <td className="px-2 py-3 w-32" onClick={e => e.stopPropagation()}>
                     <input 
                         className={`w-full text-sm rounded px-2 py-1 outline-none border transition-all ${getInputClass(row.number)}`}
@@ -149,15 +278,18 @@ const IntakeTableRow: React.FC<{
                     />
                 </td>
 
-                {/* Expand Chevron */}
-                <td className="px-2 py-3 text-center w-10">
-                    <div className={`transition-transform duration-200 ${expanded ? 'rotate-180 text-gray-600' : 'text-gray-300'}`}>
-                        <ChevronDown size={16}/>
-                    </div>
+                {/* Expand Toggle Button */}
+                <td className="px-2 py-3 text-center w-20">
+                    <button 
+                        onClick={() => setExpanded(!expanded)}
+                        className={`text-xs font-medium px-2 py-1 rounded transition-colors ${expanded ? 'bg-gray-200 text-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}
+                    >
+                        {expanded ? 'Close' : 'Expand'}
+                    </button>
                 </td>
 
-                {/* Action Buttons */}
-                <td className="px-2 py-3 text-right w-28 pr-4" onClick={e => e.stopPropagation()}>
+                {/* Quick Actions */}
+                <td className="px-2 py-3 text-right w-20 pr-4" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
                         <button 
                             onClick={onImport} 
@@ -167,13 +299,6 @@ const IntakeTableRow: React.FC<{
                         >
                             <Save size={16}/>
                         </button>
-                        <button 
-                            onClick={onDiscard} 
-                            className="p-1.5 rounded hover:bg-red-100 text-red-600 transition-colors"
-                            title="Discard (Ignore)"
-                        >
-                            <Trash2 size={16}/>
-                        </button>
                     </div>
                 </td>
             </tr>
@@ -182,125 +307,14 @@ const IntakeTableRow: React.FC<{
             {expanded && (
                 <tr className="bg-gray-50/80 border-b border-gray-200 shadow-inner">
                     <td colSpan={8} className="p-0 cursor-default">
-                        <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
-                            
-                            {/* LEFT: Full Edit Form & Validation */}
-                            <div className="space-y-4">
-                                {/* Duplicate Warning Banner */}
-                                {duplicateMatch && (
-                                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3">
-                                        <div className="bg-amber-100 p-1.5 rounded-full text-amber-600 mt-0.5">
-                                            <UserPlus size={16}/>
-                                        </div>
-                                        <div className="text-xs text-amber-900 flex-1">
-                                            <p className="font-bold uppercase tracking-wide mb-1">Potential Duplicate Found</p>
-                                            <p>This lead matches an existing record:</p>
-                                            <div className="mt-2 bg-white border border-amber-100 rounded p-2 text-gray-600 font-medium">
-                                                {duplicateMatch.companyName} ({duplicateMatch.status})
-                                                <br/>
-                                                <span className="text-gray-400 font-normal">Owner: {duplicateMatch.ydsPoc || 'Unassigned'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Error Banner */}
-                                {!row.isValid && (
-                                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-3">
-                                        <XCircle className="text-red-600 mt-0.5" size={16}/>
-                                        <div className="text-xs text-red-900">
-                                            <p className="font-bold">Missing Information</p>
-                                            <ul className="list-disc pl-4 mt-1 space-y-0.5 opacity-80">
-                                                {row.errors.map((e, i) => <li key={i}>{e}</li>)}
-                                            </ul>
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {/* Form Grid */}
-                                <div className="grid grid-cols-2 gap-4 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                                    <div className="col-span-2">
-                                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1 block">Email Address</label>
-                                        <input 
-                                            className="w-full text-sm border border-gray-300 rounded px-2.5 py-1.5"
-                                            value={row.email || ''}
-                                            onChange={e => handleChange('email', e.target.value)}
-                                            placeholder="email@example.com"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1 block">Assigned Owner</label>
-                                        <input 
-                                            className="w-full text-sm border border-gray-300 rounded px-2.5 py-1.5"
-                                            value={row.owner || ''}
-                                            onChange={e => handleChange('owner', e.target.value)}
-                                            placeholder="System / Name"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1 block">Est. Quantity</label>
-                                        <input 
-                                            type="number"
-                                            className="w-full text-sm border border-gray-300 rounded px-2.5 py-1.5"
-                                            value={row.estimatedQty || 0}
-                                            onChange={e => handleChange('estimatedQty', parseInt(e.target.value))}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1 block">Product Type</label>
-                                        <input 
-                                            className="w-full text-sm border border-gray-300 rounded px-2.5 py-1.5"
-                                            value={row.productType || ''}
-                                            onChange={e => handleChange('productType', e.target.value)}
-                                            placeholder="e.g. Hoodie"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1 block">Lead Source</label>
-                                        <input 
-                                            className="w-full text-sm border border-gray-300 rounded px-2.5 py-1.5 bg-gray-50"
-                                            value={row.source || ''}
-                                            readOnly
-                                        />
-                                    </div>
-                                    <div className="col-span-2">
-                                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1 block">Remarks / Notes</label>
-                                        <textarea 
-                                            className="w-full text-sm border border-gray-300 rounded px-2.5 py-1.5 h-20 resize-none"
-                                            value={row.remarks || ''}
-                                            onChange={e => handleChange('remarks', e.target.value)}
-                                            placeholder="Additional context..."
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* RIGHT: Raw Data Preview */}
-                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col h-full shadow-sm">
-                                <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                                    <h4 className="text-[10px] font-bold uppercase text-gray-500 flex items-center gap-2">
-                                        <FileSpreadsheet size={12}/> Original Source Data
-                                    </h4>
-                                </div>
-                                <div className="p-0 overflow-y-auto max-h-[300px] flex-1 custom-scrollbar">
-                                    <table className="w-full text-xs">
-                                        <tbody className="divide-y divide-gray-100">
-                                            {Object.entries(row.rawData).map(([k, v]) => (
-                                                <tr key={k} className="hover:bg-gray-50">
-                                                    <td className="px-4 py-2 text-gray-400 font-medium select-none w-1/3 truncate text-right border-r border-gray-100" title={k}>
-                                                        {k}
-                                                    </td>
-                                                    <td className="px-4 py-2 text-gray-700 font-mono break-all">
-                                                        {v !== null && v !== undefined ? String(v) : <span className="text-gray-300 italic">null</span>}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                        </div>
+                        <ExpandedRowEditor 
+                            row={row} 
+                            headers={headers}
+                            onUpdate={onUpdate} 
+                            onImport={onImport} 
+                            onDiscard={onDiscard} 
+                            isSaving={isSaving} 
+                        />
                     </td>
                 </tr>
             )}
@@ -386,7 +400,7 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [processingId, setProcessingId] = useState<string | null>(null); 
-    const [importingAll, setImportingAll] = useState(false);
+    const [importProgress, setImportProgress] = useState<{ current: number; total: number; currentRow: string; } | null>(null);
 
     useEffect(() => {
         scanSources();
@@ -461,7 +475,7 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
             removeRow(row);
             onImportSuccess();
         } else {
-            alert("Failed to import. Check console.");
+            alert(`Failed to import. ${res.errors.join(', ')}`);
         }
     };
 
@@ -471,17 +485,40 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
 
         if (!confirm(`Import ${rowsToImport.length} valid leads?`)) return;
 
-        setImportingAll(true);
-        const res = await IntakeService.pushToCRM(rowsToImport);
-        setImportingAll(false);
+        setImportProgress({ current: 0, total: rowsToImport.length, currentRow: 'Starting...' });
+        
+        let success = 0;
+        const failedErrors: string[] = [];
 
-        if (res.successCount > 0) {
-            setRows(prev => prev.filter(r => !selectedIds.has(r.id))); // Remove imported
-            setStats(prev => prev.map(s => s.name === activeSource ? { ...s, count: Math.max(0, s.count - res.successCount) } : s));
+        for (let i = 0; i < rowsToImport.length; i++) {
+            const row = rowsToImport[i];
+            setImportProgress({ 
+                current: i + 1, 
+                total: rowsToImport.length, 
+                currentRow: row.companyName || row.contactPerson 
+            });
             
-            setSelectedIds(new Set());
-            onImportSuccess();
-            alert(`Successfully imported ${res.successCount} leads.`);
+            const res = await IntakeService.pushToCRM([row]);
+            if (res.successCount > 0) {
+                success++;
+                // Update local state incrementally to reflect progress in UI
+                setRows(prev => prev.filter(r => r.id !== row.id)); 
+            } else {
+                failedErrors.push(...res.errors);
+            }
+        }
+
+        setImportProgress(null);
+        
+        // Update stats
+        setStats(prev => prev.map(s => s.name === activeSource ? { ...s, count: Math.max(0, s.count - success) } : s));
+        setSelectedIds(new Set());
+        onImportSuccess();
+        
+        if (failedErrors.length > 0) {
+            alert(`Imported ${success}/${rowsToImport.length}. Errors:\n${failedErrors.join('\n')}`);
+        } else {
+            alert(`Successfully imported ${success} leads.`);
         }
     };
 
@@ -707,15 +744,16 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
                                             <th className="px-2 py-3 min-w-[180px] bg-gray-50">Company Name <span className="text-red-500">*</span></th>
                                             <th className="px-2 py-3 min-w-[140px] bg-gray-50">Contact Person</th>
                                             <th className="px-2 py-3 w-32 bg-gray-50">Phone</th>
-                                            <th className="px-2 py-3 w-10 bg-gray-50"></th>
-                                            <th className="px-2 py-3 text-right w-28 pr-4 bg-gray-50">Actions</th>
+                                            <th className="px-2 py-3 w-20 text-center bg-gray-50">Expand</th>
+                                            <th className="px-2 py-3 text-right w-20 pr-4 bg-gray-50">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 bg-white">
                                         {filteredRows.map(row => (
                                             <IntakeTableRow 
                                                 key={row.id} 
-                                                row={row} 
+                                                row={row}
+                                                headers={activeHeaders}
                                                 isSelected={selectedIds.has(row.id)}
                                                 onToggleSelect={() => toggleSelect(row.id)}
                                                 onUpdate={handleUpdate}
@@ -739,6 +777,25 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
                     </div>
                 </div>
             </div>
+
+            {/* IMPORT PROGRESS OVERLAY */}
+            {importProgress && (
+                <div className="fixed bottom-8 right-8 z-50 bg-white p-4 rounded-xl shadow-2xl border border-gray-200 w-80 animate-fade-in-up">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-bold text-gray-800">Importing Leads...</span>
+                        <span className="text-xs font-mono text-gray-500">{importProgress.current} / {importProgress.total}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mb-2 truncate">
+                        Processing: <span className="font-medium text-gray-800">{importProgress.currentRow}</span>
+                    </div>
+                    <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                            className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                            style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* Modals */}
             {showMappingEditor && (

@@ -45,7 +45,8 @@ const parseRow = (
     headers: string[], 
     sourceConfig: SourceConfig, 
     rules: FieldMapRule[],
-    metadataIndices: { id: number, status: number, at: number, by: number }
+    metadataIndices: { id: number, status: number, at: number, by: number },
+    rowIndex: number
 ): IntakeRow | null => {
     
     // Check Status Column first (if mapped)
@@ -124,12 +125,15 @@ const parseRow = (
     
     if (!company && !contact) errors.push("Identity missing (Company or Name required)");
     
+    // Stable ID generation
+    const stableId = `${sourceConfig.sheetId}-${sourceConfig.tab}-${rowIndex}`;
+
     return {
-        id: `INTAKE-${Math.random().toString(36).substr(2, 9)}`,
+        id: stableId, // Use stable ID
         sourceLayer: sourceConfig.layer,
         sourceSheetId: sourceConfig.sheetId,
         sourceTab: sourceConfig.tab,
-        sourceRowIndex: -1, // Set later
+        sourceRowIndex: rowIndex,
         
         wbColIndex_Id: metadataIndices.id === -1 ? headers.length : metadataIndices.id, 
         wbColIndex_Status: metadataIndices.status,
@@ -211,11 +215,25 @@ export const IntakeService = {
             }
             return { sources, fieldMaps: res.fieldMaps };
         }
-        throw new Error("Failed to load intake config.");
+        // If config fails, try basic fallback
+        const sources = Object.entries(SOURCE_CONFIG).map(([key, cfg]) => ({
+            layer: key,
+            sheetId: cfg.id,
+            tab: cfg.sheetName || 'Sheet1',
+            type: 'Manual',
+            tags: []
+        }));
+        return { sources, fieldMaps: [] };
     },
 
     scanSources: async (): Promise<{ rows: IntakeRow[], sourceStats: SourceStat[], errors: string[], headersMap: Record<string, string[]> }> => {
-        const config = await IntakeService.getConfig();
+        let config;
+        try {
+            config = await IntakeService.getConfig();
+        } catch (e) {
+            return { rows: [], sourceStats: [], errors: ["Failed to load configuration."], headersMap: {} };
+        }
+
         const allRows: IntakeRow[] = [];
         const systemErrors: string[] = [];
         const stats: SourceStat[] = [];
@@ -251,9 +269,12 @@ export const IntakeService = {
 
             rows.forEach((row, idx) => {
                 if (row.length === 0 || !row[0]) return;
-                const parsed = parseRow(row, headers, res.source, config.fieldMaps, metadataIndices);
+                // Sheets are 1-based, and headers are row 1. Data starts at row 2. 
+                // idx is 0-based index of the *rows* array (which excludes header).
+                // So actual sheet row index = idx + 2 (1 for header + 1 for 0-base adjustment)
+                const actualRowIndex = idx + 2; 
+                const parsed = parseRow(row, headers, res.source, config.fieldMaps, metadataIndices, actualRowIndex);
                 if (parsed) {
-                    parsed.sourceRowIndex = idx + 1; // 0-based array index (API handles the +1 for sheet row)
                     validRows.push(parsed);
                 }
             });
@@ -281,13 +302,24 @@ export const IntakeService = {
             { colIndex: row.wbColIndex_ProcessedBy, value: 'Manual' }
         ].filter(u => u.colIndex !== -1);
         
-        await updateSourceRow(row.sourceSheetId, row.sourceTab, row.sourceRowIndex, updates);
+        // Ensure index is adjusted if fetch uses 0-based vs 1-based logic
+        // updateSourceRow expects 0-based index of data rows usually? No, it's wrapper around batchUpdate.
+        // Let's pass the index stored in IntakeRow which is 1-based sheet row index.
+        // Wait, updateSourceRow takes rowIndex.
+        // Let's check sheetService implementation. It uses `range: ...${rowIndex + 1}`.
+        // If we passed actual sheet row index (e.g. 5), then updateSourceRow adds 1 making it 6. 
+        // We should pass 0-based index relative to the sheet. 
+        // parseRow stores actualRowIndex (e.g. 2, 3, 4...). 
+        // If sheetService.updateSourceRow adds 1, we should pass row.sourceRowIndex - 1.
+        
+        await updateSourceRow(row.sourceSheetId, row.sourceTab, row.sourceRowIndex - 1, updates);
         return true;
     },
 
-    pushToCRM: async (rows: IntakeRow[]): Promise<{ successCount: number, failedCount: number }> => {
+    pushToCRM: async (rows: IntakeRow[]): Promise<{ successCount: number, failedCount: number, errors: string[] }> => {
         let success = 0;
         let failed = 0;
+        const errors: string[] = [];
         const now = new Date().toLocaleString();
         const isoDate = new Date().toISOString();
         const user = 'ActiveUser'; // In real app, pass actual user
@@ -298,124 +330,130 @@ export const IntakeService = {
                 continue;
             }
 
-            const leadId = generateLeadId();
-            const flowId = `FLOW-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-            
-            const leadData: Lead = {
-                _rowIndex: -1, // New row
-                leadId,
-                flowId,
+            try {
+                const leadId = generateLeadId();
+                const flowId = `FLOW-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
                 
-                // Identity
-                companyName: row.companyName,
-                contactPerson: row.contactPerson,
-                number: row.number,
-                email: row.email,
-                city: row.city,
-                source: row.source,
-                category: row.category || row.intent || 'Customisation', 
-                createdBy: user,
-                tags: row.tags,
-                identityStatus: 'Active',
-                createdAt: isoDate,
-                date: row.date || formatDate(), 
-                leadScore: row.leadScore,
-                remarks: row.remarks,
-                sourceRowId: row.sourceRowId || String(row.sourceRowIndex),
-                info: row.info,
-
-                // Flow
-                originalChannel: row.channel || '',
-                channel: row.channel || (row.sourceLayer.includes('Dropship') ? 'Dropshipping' : 'B2B'),
-                owner: row.owner || 'Unassigned',
-                ydsPoc: row.owner || 'Unassigned',
-                status: row.status || 'New',
-                stage: row.stage || 'New',
-                sourceFlowTag: row.sourceLayer,
-                updatedAt: isoDate,
-                startDate: row.startDate || isoDate,
-                expectedCloseDate: row.expectedCloseDate || '',
-                wonDate: '',
-                lostDate: '',
-                lostReason: '',
-                notes: row.notes || row.orderInfo || '',
-                estimatedQty: row.estimatedQty || 0,
-                productType: row.productType || '',
-                printType: row.printType || '',
-                priority: row.priority || '🟢 Low',
-                contactStatus: row.contactStatus || 'Not Contacted',
-                paymentUpdate: row.paymentUpdate || 'Pending',
-                nextAction: 'Assign Owner',
-                nextActionDate: row.nextActionDate || '',
-                intent: row.intent || '',
-                customerType: row.customerType || 'New',
-                
-                // UI Computed
-                orderInfo: row.orderInfo,
-                contactAttempts: 0,
-                lastContactDate: '',
-                lastAttemptDate: '',
-                slaStatus: 'Healthy',
-                slaHealth: '🟢',
-                daysOpen: '0',
-                actionOverdue: 'OK',
-                firstResponseTime: '',
-                stageChangedDate: isoDate,
-                
-                // DS
-                platformType: row.platformType,
-                integrationReady: row.integrationReady,
-                storeUrl: row.storeUrl,
-                accountCreated: '',
-                dashboardLinkSent: '',
-                onboardingStartedDate: '',
-                activationDate: '',
-                sampleRequired: '',
-                sampleStatus: '',
-                workflowType: '',
-                designsReady: '',
-                firstProductCreated: '',
-                whatsappMessage: ''
-            };
-
-            // Write to Sheets using new helpers
-            const identitySuccess = await writeToLeadsSheet(leadData);
-            const flowSuccess = await writeToLeadFlowsSheet(leadData);
-
-            if (identitySuccess && flowSuccess) {
-                success++;
-                
-                // Write back to source sheet
-                const updates = [
-                    { colIndex: row.wbColIndex_Id, value: leadId }
-                ];
-                
-                if (row.wbColIndex_Status !== -1) updates.push({ colIndex: row.wbColIndex_Status, value: 'Imported' });
-                if (row.wbColIndex_ProcessedAt !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedAt, value: now });
-                if (row.wbColIndex_ProcessedBy !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedBy, value: user });
-
-                await writeBackToSourceSheet(
-                    row.sourceSheetId,
-                    row.sourceTab,
-                    row.sourceRowIndex,
-                    updates
-                );
-
-                await addActivityLog({
-                    logId: `LOG-${Date.now()}`,
+                const leadData: Lead = {
+                    _rowIndex: -1, // New row
                     leadId,
-                    activityType: 'Import',
-                    timestamp: now,
-                    owner: 'System',
-                    notes: `Imported from ${row.sourceLayer}. Source Row: ${row.sourceRowIndex}`,
-                    fromValue: '',
-                    toValue: 'New'
-                });
-            } else {
+                    flowId,
+                    
+                    // Identity
+                    companyName: row.companyName,
+                    contactPerson: row.contactPerson,
+                    number: row.number,
+                    email: row.email,
+                    city: row.city,
+                    source: row.source,
+                    category: row.category || row.intent || 'Customisation', 
+                    createdBy: user,
+                    tags: row.tags,
+                    identityStatus: 'Active',
+                    createdAt: isoDate,
+                    date: row.date || formatDate(), 
+                    leadScore: row.leadScore,
+                    remarks: row.remarks,
+                    sourceRowId: row.sourceRowId || String(row.sourceRowIndex),
+                    info: row.info,
+
+                    // Flow
+                    originalChannel: row.channel || '',
+                    channel: row.channel || (row.sourceLayer.includes('Dropship') ? 'Dropshipping' : 'B2B'),
+                    owner: row.owner || 'Unassigned',
+                    ydsPoc: row.owner || 'Unassigned',
+                    status: row.status || 'New',
+                    stage: row.stage || 'New',
+                    sourceFlowTag: row.sourceLayer,
+                    updatedAt: isoDate,
+                    startDate: row.startDate || isoDate,
+                    expectedCloseDate: row.expectedCloseDate || '',
+                    wonDate: '',
+                    lostDate: '',
+                    lostReason: '',
+                    notes: row.notes || row.orderInfo || '',
+                    estimatedQty: row.estimatedQty || 0,
+                    productType: row.productType || '',
+                    printType: row.printType || '',
+                    priority: row.priority || '🟢 Low',
+                    contactStatus: row.contactStatus || 'Not Contacted',
+                    paymentUpdate: row.paymentUpdate || 'Pending',
+                    nextAction: 'Assign Owner',
+                    nextActionDate: row.nextActionDate || '',
+                    intent: row.intent || '',
+                    customerType: row.customerType || 'New',
+                    
+                    // UI Computed
+                    orderInfo: row.orderInfo,
+                    contactAttempts: 0,
+                    lastContactDate: '',
+                    lastAttemptDate: '',
+                    slaStatus: 'Healthy',
+                    slaHealth: '🟢',
+                    daysOpen: '0',
+                    actionOverdue: 'OK',
+                    firstResponseTime: '',
+                    stageChangedDate: isoDate,
+                    
+                    // DS
+                    platformType: row.platformType,
+                    integrationReady: row.integrationReady,
+                    storeUrl: row.storeUrl,
+                    accountCreated: '',
+                    dashboardLinkSent: '',
+                    onboardingStartedDate: '',
+                    activationDate: '',
+                    sampleRequired: '',
+                    sampleStatus: '',
+                    workflowType: '',
+                    designsReady: '',
+                    firstProductCreated: '',
+                    whatsappMessage: ''
+                };
+
+                // Write to Sheets using new helpers
+                const identitySuccess = await writeToLeadsSheet(leadData);
+                const flowSuccess = await writeToLeadFlowsSheet(leadData);
+
+                if (identitySuccess && flowSuccess) {
+                    success++;
+                    
+                    // Write back to source sheet
+                    const updates = [
+                        { colIndex: row.wbColIndex_Id, value: leadId }
+                    ];
+                    
+                    if (row.wbColIndex_Status !== -1) updates.push({ colIndex: row.wbColIndex_Status, value: 'Imported' });
+                    if (row.wbColIndex_ProcessedAt !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedAt, value: now });
+                    if (row.wbColIndex_ProcessedBy !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedBy, value: user });
+
+                    await writeBackToSourceSheet(
+                        row.sourceSheetId,
+                        row.sourceTab,
+                        row.sourceRowIndex - 1, // Adjust for 0-based
+                        updates
+                    );
+
+                    await addActivityLog({
+                        logId: `LOG-${Date.now()}`,
+                        leadId,
+                        activityType: 'Import',
+                        timestamp: now,
+                        owner: 'System',
+                        notes: `Imported from ${row.sourceLayer}. Source Row: ${row.sourceRowIndex}`,
+                        fromValue: '',
+                        toValue: 'New'
+                    });
+                } else {
+                    failed++;
+                    errors.push(`Failed to write lead ${row.companyName}`);
+                }
+            } catch (e: any) {
                 failed++;
+                errors.push(`Error importing ${row.companyName}: ${e.message}`);
             }
         }
 
-        return { successCount: success, failedCount: failed };
+        return { successCount: success, failedCount: failed, errors };
     }
 };

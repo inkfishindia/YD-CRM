@@ -294,7 +294,7 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
     }, []);
 
     // 2. Fallback if no dynamic sources found
-    const staticSources = Object.entries(SOURCE_CONFIG).map(([key, config]) => ({ key, ...config }));
+    const staticSources = Object.entries(SOURCE_CONFIG).map(([key, config]) => ({ key, name: key, ...config, headers: [] as string[] }));
     
     // Normalize for display
     const displaySources = dynamicSources.length > 0 
