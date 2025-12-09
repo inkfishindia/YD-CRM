@@ -10,7 +10,7 @@ import {
   MOCK_SLA_RULES, MOCK_AUTO_ACTIONS, MOCK_TEMPLATES 
 } from './data/mock/mockData';
 import { initGoogleAuth, loginToGoogle, logoutGoogle, restoreSession, trySilentRefresh } from './services/googleAuth';
-import { updateLead, loadSheetRange, getSpreadsheetId, SHEET_NAME_LEADS, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_ACTIVITY, addActivityLog } from './services/sheetService';
+import { updateLead, loadSheetRange, getSpreadsheetId, setSpreadsheetId, SHEET_NAME_LEADS, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_ACTIVITY, addActivityLog, fetchAllLeads } from './services/sheetService';
 
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -136,16 +136,14 @@ const App: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // In a real implementation, we would fetch all sheets here.
-      // For now, we simulate or fetch if user is logged in.
       if (user) {
-         // TODO: Implement actual fetch logic mapping sheet rows to Lead objects
-         // const rows = await loadSheetRange(getSpreadsheetId(), `${SHEET_NAME_LEAD_FLOWS}!A2:Z`);
-         // const mappedLeads = mapRowsToLeads(rows);
-         // setLeads(mappedLeads);
-         
-         // For demonstration, keep using mocks mixed with live capability if implemented
-         setLeads(MOCK_LEADS as any);
+         const realLeads = await fetchAllLeads();
+         if (realLeads.length > 0) {
+             setLeads(realLeads);
+         } else {
+             // Fallback or empty state
+             console.log("No leads fetched or error, checking console");
+         }
       }
       setSyncStatus('success');
     } catch (e) {
@@ -153,6 +151,12 @@ const App: React.FC = () => {
       setSyncStatus('error');
     }
     setLoading(false);
+  };
+
+  const handleUpdateSpreadsheetId = async (id: string) => {
+      setSpreadsheetId(id);
+      await loadData();
+      setToast({ msg: 'Connected to new Sheet', type: 'success' });
   };
 
   // --- Actions ---
@@ -167,34 +171,42 @@ const App: React.FC = () => {
         actionOverdue: health.isOverdue ? 'OVERDUE' : health.status === 'Warning' ? 'DUE SOON' : 'OK' 
     };
 
+    const oldLead = leads.find(l => l.leadId === calculatedLead.leadId);
     setLeads(prev => prev.map(l => l.leadId === calculatedLead.leadId ? calculatedLead : l));
     
-    if (!options.skipLog) {
-        const log = {
-            logId: Date.now().toString(),
-            leadId: calculatedLead.leadId,
-            flowId: calculatedLead.flowId,
-            activityType: options.customLogType || 'Update',
-            timestamp: new Date().toLocaleString(),
-            owner: user?.name || 'System',
-            notes: 'Updated lead details',
-            fromValue: '',
-            toValue: ''
-        };
-        setActivityLogs(prev => [log, ...prev]);
-        if (user) await addActivityLog(log);
+    // Logic for Stage Change Logging happens in sheetService for source of truth,
+    // but here we log UI interactions if needed for optimistic feedback.
+    
+    if (user) {
+        await updateLead(calculatedLead, user.email);
+        
+        if (!options.skipLog) {
+             const log = {
+                logId: Date.now().toString(),
+                leadId: calculatedLead.leadId,
+                activityType: options.customLogType || 'Update',
+                timestamp: new Date().toLocaleString(),
+                owner: user.name || 'System',
+                notes: 'Updated lead details',
+                fromValue: '',
+                toValue: ''
+            };
+            setActivityLogs(prev => [log, ...prev]);
+            
+            // Note: Stage changes are logged by updateLead inside sheetService.
+            // We only log explicit non-stage updates here if needed.
+            if (options.customLogType && options.customLogType !== 'Stage Change') {
+                 await addActivityLog(log);
+            }
+        }
     }
-
-    if (user) await updateLead(calculatedLead, user.email);
-  }, [slaRules, user]);
+  }, [slaRules, user, leads]);
 
   const handleAddLead = async (newLead: Partial<Lead>) => {
       // Create new lead logic
       const fullLead = { ...newLead, status: 'New', stage: 'New' } as Lead;
       setLeads(prev => [fullLead, ...prev]);
-      if (user) {
-          // call addLead service
-      }
+      // In real scenario, addLead service would be called
       setToast({ msg: 'Lead Created', type: 'success' });
   };
 
@@ -276,7 +288,7 @@ const App: React.FC = () => {
                   templates={templates}
                   onUpdateTemplates={setTemplates}
                   currentSpreadsheetId={getSpreadsheetId()}
-                  onUpdateSpreadsheetId={(id) => { /* update id */ }}
+                  onUpdateSpreadsheetId={handleUpdateSpreadsheetId}
                   user={user}
                   syncStatus={syncStatus}
                   onResetLocalData={() => setLeads([])}

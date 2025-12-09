@@ -1,9 +1,11 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { LegendItem, StageRule, SLARule, AutoActionRule, MessageTemplate, GoogleUser, Lead, REQUIRED_FIELDS_BY_STAGE, FORBIDDEN_TRANSITIONS, SHEET_IDS, SourceConfig, FieldMapRule } from '../types';
 import { Button } from './ui/Button';
 import { Input, Select, Textarea } from './ui/Form';
 import { Edit2, Plus, CheckCircle, Trash2, Copy, AlertTriangle, Link, Save, RotateCcw, Cloud, Database, CloudOff, LogIn, Hammer, Loader2, MinusCircle, Table, BookOpen, Info, List, Stethoscope, Wrench, Shield, Zap, LayoutTemplate, Activity, UploadCloud, Tag, GitMerge, ArrowDown, Ban, CheckSquare, Clock, ArrowRight, Users, History, MessageCircle, FileSpreadsheet, Box, Network, ExternalLink, RefreshCw, Import, FileText, Columns, Compass, CheckCircle2, XCircle, Layout, Sun, FileSearch, RefreshCcw, Check, Square, Play, Terminal, Layers } from 'lucide-react';
 import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populateConfigData, fetchRemoteHeaders, SHEET_NAME_LEADS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY, SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES, HEADER_LEAD_CSV, HEADER_LEGEND_CSV, HEADER_ACTIVITY_CSV, HEADER_STAGE_RULES_CSV, HEADER_SLA_RULES_CSV, HEADER_AUTO_ACTION_CSV, HEADER_TEMPLATES_CSV, SOURCE_CONFIG, SHEET_NAME_IDENTITY, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_DROPSHIP_FLOWS, SHEET_NAME_STORES, SHEET_NAME_ACCOUNT_MAP, SHEET_NAME_FLOW_HISTORY, HEADER_IDENTITY_CSV, HEADER_LEAD_FLOW_CSV, HEADER_DROPSHIP_FLOW_CSV, HEADER_STORE_CSV, HEADER_ACCOUNT_MAP_CSV, HEADER_FLOW_HISTORY_CSV, fetchLeadsFromSource, analyzeSheetColumns, ColumnMetadata, fetchRemoteSheetNames, SYSTEM_SHEET_NAMES, getSpreadsheetId, fetchIntakeConfig, saveFieldMappings } from '../services/sheetService';
+import { IntakeService } from '../services/intakeService';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { MappingEditorModal } from './MappingEditorModal';
@@ -226,7 +228,7 @@ const AutomationSettings: React.FC<{ stageRules: StageRule[], onUpdateStageRules
                 <p className="text-sm text-gray-500 mb-4">Manage these in the <strong>Stage_Rules</strong> sheet.</p>
                 <div className="space-y-2">
                     {stageRules.map((r, i) => (
-                        <div key={i} className="text-sm border-b border-gray-100 pb-2 last:border-0">
+                        <div key={i} className="text-xs border-b border-gray-100 pb-2 last:border-0">
                             {r.fromStage} &rarr; {r.toStage} (Requires: {r.requiresField.join(', ')})
                         </div>
                     ))}
@@ -239,7 +241,7 @@ const AutomationSettings: React.FC<{ stageRules: StageRule[], onUpdateStageRules
                 <p className="text-sm text-gray-500 mb-4">Manage these in the <strong>SLA_Rules</strong> sheet.</p>
                 <div className="space-y-2">
                     {slaRules.map((r, i) => (
-                        <div key={i} className="text-sm border-b border-gray-100 pb-2 last:border-0">
+                        <div key={i} className="text-xs border-b border-gray-100 pb-2 last:border-0">
                             {r.stage}: {r.thresholdHours}h limit ({r.alertLevel})
                         </div>
                     ))}
@@ -337,6 +339,21 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
         setLoadingState({ action: 'import', key: sourceKey });
         setImportResult(null);
         
+        // Use IntakeService for consistent parsing logic
+        const scanRes = await IntakeService.scanSources();
+        // Filter for specific source
+        const relevantRows = scanRes.rows.filter(r => r.sourceLayer === sourceKey);
+        
+        // Convert IntakeRow to Lead to match interface expected by imports view
+        // Note: fetchLeadsFromSource usually returns Lead[] directly, but using IntakeService gives IntakeRows.
+        // We will transform them or use the simpler fetchLeadsFromSource if it was updated.
+        // Let's use fetchLeadsFromSource which we updated in sheetService to be basic but functional.
+        // Or better, use IntakeService logic if we want robust field mapping.
+        
+        // Since we are inside SourceIntegrations which feeds into ImportsView (staging), 
+        // passing fully parsed leads is better.
+        
+        // Let's try the fetchLeadsFromSource wrapper we updated in sheetService.
         const res = await fetchLeadsFromSource(sourceKey as any);
         
         setLoadingState(null);
@@ -346,7 +363,7 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
             onViewImports(); // Navigate to Imports View
         } else {
             setImportResult({
-                message: res.message,
+                message: res.message || "No new leads found.",
                 type: res.success ? 'success' : 'error'
             });
         }

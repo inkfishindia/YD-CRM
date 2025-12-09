@@ -1,11 +1,11 @@
 
 import { 
     fetchIntakeConfig, fetchDynamicSheet, addLead, addActivityLog, updateSourceRow, SOURCE_CONFIG,
-    writeToLeadsSheet, writeToLeadFlowsSheet, writeBackToSourceSheet
+    writeToLeadsSheet, writeToLeadFlowsSheet, writeBackToSourceSheet, getNextLeadNumber, HARDCODED_FIELD_MAPS, MODULE_IDS
 } from './sheetService';
 import { 
     IntakeRow, FieldMapRule, Lead, SourceConfig, 
-    formatDate 
+    formatDate, addDaysToDate
 } from '../types';
 
 // --- TRANSFORM HELPERS ---
@@ -49,18 +49,15 @@ const parseRow = (
     rowIndex: number
 ): IntakeRow | null => {
     
-    // Check Status Column first (if mapped)
     if (metadataIndices.status !== -1) {
         const status = String(rawData[metadataIndices.status] || '').trim().toLowerCase();
         if (status === 'imported' || status === 'ignored') {
-            return null; // Skip handled rows
+            return null; 
         }
     }
 
-    // Fallback: Check Write-Back ID Column
     if (metadataIndices.id !== -1) {
         const existingId = rawData[metadataIndices.id];
-        // Only skip if the ID looks like a CRM ID (e.g., YDS- or LEAD-)
         if (existingId && (String(existingId).includes('YDS-') || String(existingId).includes('LEAD-'))) {
             return null; 
         }
@@ -120,16 +117,30 @@ const parseRow = (
         return '';
     };
 
-    const company = rowMap['company'] || rowMap['companyName'] || findVal(['company', 'company_name', 'business name', 'company / brand']);
-    const contact = rowMap['full_name'] || rowMap['contactPerson'] || findVal(['contact', 'contact person', 'name', 'lead name', 'first name']);
+    const company = rowMap['companyName'] || findVal([
+        'company_name',     // TKW
+        'business name',    // Commerce
+        'company / brand'   // Dropship
+    ]);
+
+    let contact = rowMap['contactPerson'] || findVal([
+        'contact person',   // TKW
+        'first name',       // Commerce
+        'lead name'         // Dropship
+    ]);
+
+    const lastName = findVal(['last name']);
+    if (contact && lastName) {
+        contact = `${contact} ${lastName}`;
+    }
+    rowMap['contactPerson'] = contact;
     
     if (!company && !contact) errors.push("Identity missing (Company or Name required)");
     
-    // Stable ID generation
     const stableId = `${sourceConfig.sheetId}-${sourceConfig.tab}-${rowIndex}`;
 
     return {
-        id: stableId, // Use stable ID
+        id: stableId, 
         sourceLayer: sourceConfig.layer,
         sourceSheetId: sourceConfig.sheetId,
         sourceTab: sourceConfig.tab,
@@ -140,7 +151,6 @@ const parseRow = (
         wbColIndex_ProcessedAt: metadataIndices.at,
         wbColIndex_ProcessedBy: metadataIndices.by,
         
-        // Identity
         companyName: company,
         contactPerson: contact,
         number: rowMap['phone'] || rowMap['number'] || findVal(['phone', 'mobile', 'whatsapp', 'phone / whatsapp']),
@@ -154,7 +164,6 @@ const parseRow = (
         info: rowMap['Info'] || rowMap['info'] || '',
         sourceRowId: rowMap['sourceRowId'] || findVal(['lead_id', 'source_lead_id']) || '', 
 
-        // Flow
         channel: rowMap['channel'] || '',
         owner: rowMap['owner'] || rowMap['created_by'] || findVal(['allocated to', 'yds - poc']) || '',
         status: rowMap['status'] || 'New',
@@ -173,7 +182,6 @@ const parseRow = (
         category: rowMap['category'] || rowMap['Category'] || findVal(['lead category', 'category']) || '', 
         customerType: rowMap['customer_type'] || rowMap['customerType'] || '',
         
-        // Dropship / Specifics
         storeUrl: rowMap['store_url'] || findVal(['website/social url']) || '',
         platformType: rowMap['platform_type'] || findVal(['currently using']) || '',
         integrationReady: rowMap['integration_ready'] || '',
@@ -194,28 +202,22 @@ export interface SourceStat {
     lastSync: string;
 }
 
-const generateLeadId = () => {
-    return `YDS-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
-};
-
 export const IntakeService = {
     getConfig: async () => {
         const res = await fetchIntakeConfig();
         if (res.success) {
             let sources = res.sources;
-            // Fallback for empty sources from sheet, use Hardcoded SOURCE_CONFIG
             if (sources.length === 0) {
                 sources = Object.entries(SOURCE_CONFIG).map(([key, cfg]) => ({
-                    layer: key, // Use Key (e.g., 'Commerce') not cfg.name ('Commerce Leads')
+                    layer: key, 
                     sheetId: cfg.id,
                     tab: cfg.sheetName || 'Sheet1',
                     type: key === 'TKW' ? 'Vendor' : 'Commerce', 
                     tags: []
                 }));
             }
-            return { sources, fieldMaps: res.fieldMaps };
+            return { sources, fieldMaps: res.fieldMaps.length > 0 ? res.fieldMaps : HARDCODED_FIELD_MAPS };
         }
-        // If config fails, try basic fallback
         const sources = Object.entries(SOURCE_CONFIG).map(([key, cfg]) => ({
             layer: key,
             sheetId: cfg.id,
@@ -223,7 +225,7 @@ export const IntakeService = {
             type: 'Manual',
             tags: []
         }));
-        return { sources, fieldMaps: [] };
+        return { sources, fieldMaps: HARDCODED_FIELD_MAPS };
     },
 
     scanSources: async (): Promise<{ rows: IntakeRow[], sourceStats: SourceStat[], errors: string[], headersMap: Record<string, string[]> }> => {
@@ -256,22 +258,25 @@ export const IntakeService = {
             
             const validRows: IntakeRow[] = [];
             
-            // Helper to find column index case-insensitively
             const findIdx = (names: string[]) => headers.findIndex(h => names.some(n => n.toLowerCase() === h.toLowerCase().trim()));
             
-            // CRITICAL: Identify WRITE-BACK Columns. 
             const metadataIndices = {
-                id: findIdx(['yds_lead_id', 'yds lead id', 'crm_id', 'crm_row_id', 'YDS LEAD ID']), 
-                status: findIdx(['crm_status', 'status', 'import_status', 'yds_lead_status', 'YDC - Status']), 
-                at: findIdx(['crm_processed_at', 'processed_at', 'import_date']),
-                by: findIdx(['crm_processed_by', 'processed_by', 'imported_by'])
+                id: findIdx([
+                    'yds_lead_id', 'yds lead id', 'YDS LEAD ID', 'crm_id', 'crm_row_id'
+                ]),
+                status: findIdx([
+                    'YDC - Status', 'Lead Status', 'crm_status', 'import_status', 'status'
+                ]),
+                at: findIdx([
+                    'crm_processed_at', 'processed_at', 'import_date'
+                ]),
+                by: findIdx([
+                    'crm_processed_by', 'processed_by', 'imported_by'
+                ])
             };
 
             rows.forEach((row, idx) => {
                 if (row.length === 0 || !row[0]) return;
-                // Sheets are 1-based, and headers are row 1. Data starts at row 2. 
-                // idx is 0-based index of the *rows* array (which excludes header).
-                // So actual sheet row index = idx + 2 (1 for header + 1 for 0-base adjustment)
                 const actualRowIndex = idx + 2; 
                 const parsed = parseRow(row, headers, res.source, config.fieldMaps, metadataIndices, actualRowIndex);
                 if (parsed) {
@@ -302,16 +307,6 @@ export const IntakeService = {
             { colIndex: row.wbColIndex_ProcessedBy, value: 'Manual' }
         ].filter(u => u.colIndex !== -1);
         
-        // Ensure index is adjusted if fetch uses 0-based vs 1-based logic
-        // updateSourceRow expects 0-based index of data rows usually? No, it's wrapper around batchUpdate.
-        // Let's pass the index stored in IntakeRow which is 1-based sheet row index.
-        // Wait, updateSourceRow takes rowIndex.
-        // Let's check sheetService implementation. It uses `range: ...${rowIndex + 1}`.
-        // If we passed actual sheet row index (e.g. 5), then updateSourceRow adds 1 making it 6. 
-        // We should pass 0-based index relative to the sheet. 
-        // parseRow stores actualRowIndex (e.g. 2, 3, 4...). 
-        // If sheetService.updateSourceRow adds 1, we should pass row.sourceRowIndex - 1.
-        
         await updateSourceRow(row.sourceSheetId, row.sourceTab, row.sourceRowIndex - 1, updates);
         return true;
     },
@@ -322,46 +317,44 @@ export const IntakeService = {
         const errors: string[] = [];
         const now = new Date().toLocaleString();
         const isoDate = new Date().toISOString();
-        const user = 'ActiveUser'; // In real app, pass actual user
+        const user = 'ActiveUser'; 
 
         for (const row of rows) {
-            if (!row.isValid) {
-                failed++;
-                continue;
-            }
-
             try {
-                const leadId = generateLeadId();
-                const flowId = `FLOW-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                // 1. Generate Lead ID
+                const nextNum = await getNextLeadNumber();
+                const leadId = `YDS-${String(nextNum).padStart(4, '0')}`;
+                const flowId = `FLOW-${String(nextNum).padStart(4, '0')}`;
                 
+                // 2. Build Lead Object
                 const leadData: Lead = {
-                    _rowIndex: -1, // New row
+                    _rowIndex: -1, 
                     leadId,
                     flowId,
                     
                     // Identity
-                    companyName: row.companyName,
-                    contactPerson: row.contactPerson,
-                    number: row.number,
-                    email: row.email,
-                    city: row.city,
-                    source: row.source,
-                    category: row.category || row.intent || 'Customisation', 
+                    companyName: row.companyName || '',
+                    contactPerson: row.contactPerson || '',
+                    number: row.number || '',
+                    email: row.email || '',
+                    city: row.city || '',
+                    source: row.source || row.sourceLayer,
+                    category: row.category || (row.sourceLayer.includes('Commerce') || row.sourceLayer.includes('DS') ? 'Dropshipping' : 'Customisation'),
                     createdBy: user,
                     tags: row.tags,
                     identityStatus: 'Active',
                     createdAt: isoDate,
-                    date: row.date || formatDate(), 
-                    leadScore: row.leadScore,
-                    remarks: row.remarks,
-                    sourceRowId: row.sourceRowId || String(row.sourceRowIndex),
-                    info: row.info,
+                    date: row.date || formatDate(),
+                    leadScore: row.leadScore || '',
+                    remarks: row.remarks || '',
+                    sourceRowId: row.sourceRowId || `${row.sourceLayer}.Row${row.sourceRowIndex}`,
+                    info: row.info || '',
 
                     // Flow
                     originalChannel: row.channel || '',
-                    channel: row.channel || (row.sourceLayer.includes('Dropship') ? 'Dropshipping' : 'B2B'),
-                    owner: row.owner || 'Unassigned',
-                    ydsPoc: row.owner || 'Unassigned',
+                    channel: row.channel || (row.sourceLayer.includes('TKW') ? 'B2B' : row.sourceLayer.includes('Commerce') || row.sourceLayer.includes('DS') ? 'Dropshipping' : 'B2B'),
+                    owner: row.owner || row.owner || 'Unassigned',
+                    ydsPoc: row.owner || row.owner || 'Unassigned',
                     status: row.status || 'New',
                     stage: row.stage || 'New',
                     sourceFlowTag: row.sourceLayer,
@@ -376,29 +369,29 @@ export const IntakeService = {
                     productType: row.productType || '',
                     printType: row.printType || '',
                     priority: row.priority || '🟢 Low',
-                    contactStatus: row.contactStatus || 'Not Contacted',
-                    paymentUpdate: row.paymentUpdate || 'Pending',
-                    nextAction: 'Assign Owner',
-                    nextActionDate: row.nextActionDate || '',
-                    intent: row.intent || '',
+                    contactStatus: row.contactStatus || 'Pending',
+                    paymentUpdate: row.paymentUpdate || '',
+                    nextAction: 'Initial Contact',
+                    nextActionDate: row.nextActionDate || addDaysToDate(1),
+                    intent: row.intent || 'Unknown',
                     customerType: row.customerType || 'New',
                     
-                    // UI Computed
-                    orderInfo: row.orderInfo,
+                    // Computed/UI
+                    orderInfo: row.orderInfo || '',
                     contactAttempts: 0,
                     lastContactDate: '',
                     lastAttemptDate: '',
-                    slaStatus: 'Healthy',
+                    slaStatus: 'Pending',
                     slaHealth: '🟢',
-                    daysOpen: '0',
+                    daysOpen: '0d',
                     actionOverdue: 'OK',
                     firstResponseTime: '',
                     stageChangedDate: isoDate,
                     
                     // DS
-                    platformType: row.platformType,
-                    integrationReady: row.integrationReady,
-                    storeUrl: row.storeUrl,
+                    platformType: row.platformType || '',
+                    integrationReady: row.integrationReady || '',
+                    storeUrl: row.storeUrl || '',
                     accountCreated: '',
                     dashboardLinkSent: '',
                     onboardingStartedDate: '',
@@ -411,26 +404,22 @@ export const IntakeService = {
                     whatsappMessage: ''
                 };
 
-                // Write to Sheets using new helpers
-                const identitySuccess = await writeToLeadsSheet(leadData);
-                const flowSuccess = await writeToLeadFlowsSheet(leadData);
+                const ok = await addLead(leadData);
 
-                if (identitySuccess && flowSuccess) {
+                if (ok) {
                     success++;
                     
-                    // Write back to source sheet
-                    const updates = [
-                        { colIndex: row.wbColIndex_Id, value: leadId }
-                    ];
-                    
+                    // 3. Write back to source sheet
+                    const updates = [];
+                    if (row.wbColIndex_Id !== -1) updates.push({ colIndex: row.wbColIndex_Id, value: leadId });
                     if (row.wbColIndex_Status !== -1) updates.push({ colIndex: row.wbColIndex_Status, value: 'Imported' });
                     if (row.wbColIndex_ProcessedAt !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedAt, value: now });
                     if (row.wbColIndex_ProcessedBy !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedBy, value: user });
 
-                    await writeBackToSourceSheet(
+                    await updateSourceRow(
                         row.sourceSheetId,
                         row.sourceTab,
-                        row.sourceRowIndex - 1, // Adjust for 0-based
+                        row.sourceRowIndex - 1, 
                         updates
                     );
 
@@ -439,7 +428,7 @@ export const IntakeService = {
                         leadId,
                         activityType: 'Import',
                         timestamp: now,
-                        owner: 'System',
+                        owner: 'System', 
                         notes: `Imported from ${row.sourceLayer}. Source Row: ${row.sourceRowIndex}`,
                         fromValue: '',
                         toValue: 'New'
@@ -451,6 +440,7 @@ export const IntakeService = {
             } catch (e: any) {
                 failed++;
                 errors.push(`Error importing ${row.companyName}: ${e.message}`);
+                console.error('Import error:', e);
             }
         }
 
