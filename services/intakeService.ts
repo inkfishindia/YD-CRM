@@ -228,6 +228,39 @@ export const IntakeService = {
         return { sources, fieldMaps: HARDCODED_FIELD_MAPS };
     },
 
+    previewSource: async (sourceConfig: SourceConfig, fieldMaps: FieldMapRule[]): Promise<{ success: boolean, results: { raw: any, parsed: IntakeRow }[], error?: string }> => {
+        try {
+            const res = await fetchDynamicSheet(sourceConfig.sheetId, sourceConfig.tab);
+            if (!res.success) return { success: false, results: [], error: 'Failed to load sheet data. Check ID and Tab name.' };
+
+            const { headers, rows } = res;
+            if (rows.length === 0) return { success: false, results: [], error: 'Sheet is empty.' };
+
+            // Take top 3 non-empty rows for preview
+            const sampleRows = rows.slice(0, 3);
+            
+            // Mock metadata indices (-1 to force parse without skipping)
+            const metadataIndices = { id: -1, status: -1, at: -1, by: -1 };
+
+            const results = sampleRows.map((row, idx) => {
+                const actualRowIndex = idx + 2;
+                const parsed = parseRow(row, headers, sourceConfig, fieldMaps, metadataIndices, actualRowIndex);
+                
+                // Reconstruct Raw Data Map for UI display
+                const raw: Record<string, any> = {};
+                headers.forEach((h, i) => {
+                    if(h) raw[h] = row[i];
+                });
+
+                return { raw, parsed };
+            }).filter(item => item.parsed !== null) as { raw: any, parsed: IntakeRow }[];
+
+            return { success: true, results };
+        } catch (e: any) {
+            return { success: false, results: [], error: e.message };
+        }
+    },
+
     scanSources: async (): Promise<{ rows: IntakeRow[], sourceStats: SourceStat[], errors: string[], headersMap: Record<string, string[]> }> => {
         let config;
         try {

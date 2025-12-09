@@ -1,4 +1,4 @@
-
+// ... imports
 import { Lead, ActivityLog, SourceConfig, FieldMapRule, LegendItem, StageRule, SLARule, AutoActionRule, MessageTemplate } from '../types';
 import { safeGetItem } from './googleAuth';
 
@@ -195,22 +195,33 @@ const getColumnLetter = (colIndex: number): string => {
 
 export const fetchIntakeConfig = async (): Promise<{ success: boolean, sources: SourceConfig[], fieldMaps: FieldMapRule[] }> => {
     try {
-        // Read Sources from the main configured sheet
-        const sourcesData = await loadSheetRange(getSpreadsheetId(), 'Sources!A2:E');
+        const sheetId = getSpreadsheetId();
         
-        const sources: SourceConfig[] = sourcesData.map(row => ({
-            layer: row[0],      // Name (e.g. "Commerce Leads")
-            sheetId: row[1],    
-            tab: row[2],        // Tab Name
-            type: row[3],       
-            tags: row[4] ? row[4].split(',').map((t: string) => t.trim()) : []
+        const sourcesData = await loadSheetRange(sheetId, 'Sources!A2:E');
+        const fieldMapsData = await loadSheetRange(sheetId, 'SOURCES_FIELD_MAP!A2:I');
+        
+        const sources: SourceConfig[] = (sourcesData || []).map(row => ({
+            layer: row[0],        // "Commerce Leads", "Dropship Leads", "TKW new leads"
+            sheetId: row[1],      // Sheet ID
+            tab: row[2],          // Tab name
+            type: row[3],         // "Dropship / Partner"
+            tags: row[4] ? row[4].split('/').map((t: string) => t.trim()) : []
         }));
 
-        // Return hardcoded maps as per P0 requirement
-        return { success: true, sources, fieldMaps: HARDCODED_FIELD_MAPS };
+        const fieldMaps: FieldMapRule[] = (fieldMapsData || []).map(row => ({
+            id: row[0],           // sfm35, sfm36...
+            sourceLayer: row[1],  // "Commerce Leads"
+            sourceHeader: row[2], // "Date", "Business Name"
+            intakeField: row[3],  // "created_at", "company"
+            transform: row[4] || 'none',
+            isRequired: row[5] === 'TRUE',
+            notes: row[6] || ''
+        }));
+
+        return { success: true, sources, fieldMaps };
     } catch (e) {
         console.error("Failed to load intake config", e);
-        return { success: false, sources: [], fieldMaps: HARDCODED_FIELD_MAPS };
+        return { success: false, sources: [], fieldMaps: [] };
     }
 };
 
@@ -569,8 +580,53 @@ export const addSourceConfig = async (config: SourceConfig): Promise<boolean> =>
 };
 
 export const saveFieldMappings = async (layerName: string, mappings: Partial<FieldMapRule>[]): Promise<boolean> => {
-    // Mock for now, since we use HARDCODED_FIELD_MAPS
-    return true;
+    const sheetId = getSpreadsheetId();
+    const tabName = SHEET_NAME_FIELD_MAPS;
+    
+    try {
+        // 1. Fetch existing mappings
+        const range = `${tabName}!A2:G`;
+        const existingData = await loadSheetRange(sheetId, range);
+        
+        // 2. Filter out rows that match the current layerName
+        // Note: Col 1 (index 1) is source_layer
+        const keptRows = (existingData || []).filter(row => row[1] !== layerName);
+        
+        // 3. Create new rows
+        const newRows = mappings.map(m => [
+            `fm-${Date.now()}-${Math.floor(Math.random()*1000)}`, // id
+            layerName,                                            // source_layer
+            m.sourceHeader || '',                                 // source_header
+            m.intakeField || '',                                  // intake_field
+            m.transform || '',                                    // transform
+            m.isRequired ? 'TRUE' : 'FALSE',                      // is_required
+            m.notes || ''                                         // notes
+        ]);
+        
+        const finalRows = [...keptRows, ...newRows];
+        
+        // 4. Clear and Write Back
+        // Clear range first
+        await window.gapi.client.sheets.spreadsheets.values.clear({
+            spreadsheetId: sheetId,
+            range: `${tabName}!A2:G`
+        });
+        
+        // Write new data
+        if (finalRows.length > 0) {
+            await window.gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: sheetId,
+                range: `${tabName}!A2`,
+                valueInputOption: 'USER_ENTERED',
+                resource: { values: finalRows }
+            });
+        }
+        
+        return true;
+    } catch (e) {
+        console.error("Failed to save field mappings", e);
+        return false;
+    }
 };
 
 // --- Admin / Diagnostics ---

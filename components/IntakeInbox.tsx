@@ -4,7 +4,7 @@ import { IntakeService, SourceStat } from '../services/intakeService';
 import { IntakeRow, GoogleUser, SourceConfig, FieldMapRule, Lead } from '../types';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
-import { MappingEditorModal } from './MappingEditorModal';
+import { SourceSettingsModal } from './SourceSettingsModal';
 import { AddSourceModal } from './AddSourceModal';
 import { 
     AlertTriangle, RefreshCw, UploadCloud, Save, Trash2, CheckCircle2, 
@@ -394,7 +394,9 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
     
     const [configSources, setConfigSources] = useState<SourceConfig[]>([]);
     const [configMaps, setConfigMaps] = useState<FieldMapRule[]>([]);
-    const [showMappingEditor, setShowMappingEditor] = useState<SourceConfig | null>(null);
+    
+    // Replace simple mapping editor with powerful SourceSettingsModal
+    const [showSourceSettings, setShowSourceSettings] = useState<SourceConfig | null>(null);
     const [showAddSource, setShowAddSource] = useState(false);
 
     const [loading, setLoading] = useState(false);
@@ -641,9 +643,9 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
                                     className="p-2 rounded text-gray-400 hover:text-blue-600 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
                                     onClick={() => {
                                         const src = configSources.find(s => s.layer === stat.name);
-                                        if(src) setShowMappingEditor(src);
+                                        if(src) setShowSourceSettings(src);
                                     }}
-                                    title="Map Columns"
+                                    title="Settings & Mapping"
                                 >
                                     <Settings size={14}/>
                                 </button>
@@ -798,18 +800,18 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
             )}
 
             {/* Modals */}
-            {showMappingEditor && (
-                <MappingEditorModal 
-                    isOpen={!!showMappingEditor}
-                    onClose={() => setShowMappingEditor(null)}
-                    source={showMappingEditor}
-                    currentRules={configMaps.filter(m => m.sourceLayer === showMappingEditor?.layer)}
+            {showSourceSettings && (
+                <SourceSettingsModal 
+                    isOpen={!!showSourceSettings}
+                    onClose={() => setShowSourceSettings(null)}
+                    source={showSourceSettings}
+                    currentRules={configMaps.filter(m => m.sourceLayer === showSourceSettings?.layer)}
                 />
             )}
             <AddSourceModal 
                 isOpen={showAddSource}
                 onClose={() => setShowAddSource(false)}
-                onSuccess={(newSource) => { scanSources(); setShowMappingEditor(newSource); }}
+                onSuccess={(newSource) => { scanSources(); setShowSourceSettings(newSource); }}
             />
         </div>
     );
