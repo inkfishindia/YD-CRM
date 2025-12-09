@@ -37,6 +37,15 @@ export interface ScanResult {
 export async function scanSource(sourceKey: 'commerce' | 'dropship' | 'tkw'): Promise<ScanResult> {
   const source = INTAKE_SOURCES[sourceKey];
   
+  if (!window.gapi?.client?.sheets) {
+      return {
+          rows: [],
+          stats: { total: 0, ready: 0, invalid: 0 },
+          error: "Google API not initialized. Please refresh.",
+          meta: { sheetId: source.sheetId, tabName: source.tab }
+      };
+  }
+
   try {
     // 1. Fetch Headers First (Validation Step)
     const headerResponse = await window.gapi.client.sheets.spreadsheets.values.get({
@@ -119,8 +128,10 @@ export async function scanSource(sourceKey: 'commerce' | 'dropship' | 'tkw'): Pr
     console.error("Scan Source Error:", e);
     
     let errorMsg = "Connection Failed";
-    if (e.status === 403) errorMsg = "Permission Denied: Check Sheet access.";
-    if (e.status === 404) errorMsg = "Sheet Not Found: Check Sheet ID.";
+    // Enhance error detail based on status
+    if (e.status === 403) errorMsg = "Permission Denied: User cannot access this sheet.";
+    if (e.status === 404) errorMsg = "Sheet Not Found: The Spreadsheet ID is incorrect.";
+    if (e.status === 400) errorMsg = "Bad Request: Check if Tab Name exists.";
     if (e.result?.error?.message) errorMsg = e.result.error.message;
 
     return { 

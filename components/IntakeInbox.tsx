@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { scanSource, checkDuplicates, importRows, ScanResult } from '../services/intakeService';
 import { INTAKE_SOURCES } from '../config/intakeSources';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
-import { ShoppingCart, Package, Users, RefreshCw, CheckCircle, AlertTriangle, Info, Table, FileSpreadsheet, ExternalLink, XCircle } from 'lucide-react';
+import { ShoppingCart, Package, Users, RefreshCw, CheckCircle, AlertTriangle, Info, Table, FileSpreadsheet, ExternalLink, XCircle, Database, Link, Check } from 'lucide-react';
 import { GoogleUser, Lead } from '../types';
 
 interface IntakeInboxProps {
@@ -33,36 +34,56 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
     if (user) scanAll();
   }, [user]);
   
-  const scanAll = async () => {
-    for (const source of SOURCE_TABS) {
-      setData(prev => ({ ...prev, [source.key]: { ...prev[source.key], loading: true, error: undefined } }));
-      
-      const result: ScanResult = await scanSource(source.key);
-      
-      if (result.error) {
-           setData(prev => ({ 
-               ...prev, 
-               [source.key]: { 
-                   rows: [], 
-                   stats: null, 
-                   loading: false, 
-                   error: result.error,
-                   meta: result.meta 
-               } 
-           }));
-      } else {
-           const checked = await checkDuplicates(result.rows, existingLeads);
-           setData(prev => ({ 
-               ...prev, 
-               [source.key]: { 
-                   rows: checked, 
-                   stats: result.stats, 
-                   loading: false, 
-                   meta: result.meta 
-               } 
-           }));
-      }
-    }
+  const scanAll = () => {
+    // 1. Set all to loading initially to provide immediate feedback
+    setData(prev => {
+        const next = { ...prev };
+        SOURCE_TABS.forEach(tab => {
+            next[tab.key] = { ...next[tab.key], loading: true, error: undefined };
+        });
+        return next;
+    });
+
+    // 2. Fire requests in parallel
+    SOURCE_TABS.forEach(async (source) => {
+        try {
+            const result: ScanResult = await scanSource(source.key);
+            
+            if (result.error) {
+                setData(prev => ({ 
+                    ...prev, 
+                    [source.key]: { 
+                        rows: [], 
+                        stats: null, 
+                        loading: false, 
+                        error: result.error,
+                        meta: result.meta 
+                    } 
+                }));
+            } else {
+                const checked = await checkDuplicates(result.rows, existingLeads);
+                setData(prev => ({ 
+                    ...prev, 
+                    [source.key]: { 
+                        rows: checked, 
+                        stats: result.stats, 
+                        loading: false, 
+                        meta: result.meta 
+                    } 
+                }));
+            }
+        } catch (e) {
+             console.error(`Error scanning ${source.key}:`, e);
+             setData(prev => ({ 
+                ...prev, 
+                [source.key]: { 
+                    ...prev[source.key],
+                    loading: false, 
+                    error: "Unexpected scan error"
+                } 
+            }));
+        }
+    });
   };
   
   const handleImport = async (row: any) => {
@@ -79,13 +100,14 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
   
   const currentData = data[activeTab];
   const sourceConfig = INTAKE_SOURCES[activeTab];
-  // Cast mappings to a generic structure to avoid "never" type on key access when activeTab is dynamic/union
   const mappings = sourceConfig.mappings as Record<string, { required: boolean; field: string }>;
   
   const ready = currentData.rows?.filter((r: any) => r.isValid && !r.isDuplicate) || [];
   const invalid = currentData.rows?.filter((r: any) => !r.isValid) || [];
   const duplicates = currentData.rows?.filter((r: any) => r.isDuplicate) || [];
   
+  const isLoadingAny = Object.values(data).some(d => d.loading);
+
   return (
     <div className="flex flex-col h-full bg-white relative">
       {/* Source Tabs */}
@@ -97,22 +119,32 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
                         const Icon = tab.icon;
                         const tabData = data[tab.key];
                         const hasError = !!tabData.error;
+                        const isTabLoading = tabData.loading;
+
                         return (
                         <button
                             key={tab.key}
                             onClick={() => { setActiveTab(tab.key); setShowConfigInfo(false); }}
-                            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors whitespace-nowrap border ${
+                            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors whitespace-nowrap border relative ${
                             activeTab === tab.key
-                                ? `bg-${tab.color}-100 text-${tab.color}-700 border-${tab.color}-200`
+                                ? `bg-${tab.color}-100 text-${tab.color}-700 border-${tab.color}-200 shadow-sm`
                                 : hasError 
                                     ? 'bg-red-50 text-red-600 border-red-200'
                                     : 'text-gray-500 hover:bg-gray-100 border-transparent'
                             }`}
                         >
-                            {hasError ? <AlertTriangle size={18}/> : <Icon size={18} />}
+                            {isTabLoading ? (
+                                <RefreshCw size={18} className="animate-spin opacity-60" />
+                            ) : hasError ? (
+                                <AlertTriangle size={18}/> 
+                            ) : (
+                                <Icon size={18} />
+                            )}
+                            
                             {tab.label}
-                            {tabData.stats && tabData.stats.ready > 0 && (
-                            <Badge variant="neutral" className="ml-1">{tabData.stats.ready}</Badge>
+                            
+                            {!isTabLoading && tabData.stats && tabData.stats.ready > 0 && (
+                                <Badge variant="neutral" className="ml-1 bg-white/50 border-gray-200">{tabData.stats.ready}</Badge>
                             )}
                         </button>
                         );
@@ -125,11 +157,12 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
                         size="sm" 
                         onClick={() => setShowConfigInfo(!showConfigInfo)}
                         className={showConfigInfo ? 'bg-blue-50 text-blue-600' : 'text-gray-400'}
+                        title="View Configuration"
                     >
                         <Info size={18} />
                     </Button>
-                    <Button onClick={scanAll} variant="ghost" size="sm" className="ml-auto" disabled={currentData.loading}>
-                        <RefreshCw size={16} className={Object.values(data).some(d => d.loading) ? 'animate-spin' : ''} />
+                    <Button onClick={scanAll} variant="ghost" size="sm" className="ml-auto" disabled={isLoadingAny}>
+                        <RefreshCw size={16} className={isLoadingAny ? 'animate-spin' : ''} />
                         <span className="hidden sm:inline ml-2">Refresh All</span>
                     </Button>
                  </div>
@@ -137,39 +170,63 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
 
             {/* Config Info Drawer */}
             {showConfigInfo && (
-                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 animate-fade-in text-sm text-blue-900">
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 animate-fade-in text-sm text-blue-900 shadow-inner">
                     <div className="flex items-start gap-3">
                         <FileSpreadsheet className="shrink-0 text-blue-500 mt-1" size={20} />
                         <div className="flex-1 space-y-2">
-                            <h4 className="font-bold">Source Configuration: {sourceConfig.name}</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="flex justify-between items-start">
+                                <h4 className="font-bold text-lg">{sourceConfig.name} Configuration</h4>
+                                <div className="flex items-center gap-2">
+                                    {currentData.error ? (
+                                        <span className="flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 px-2 py-1 rounded">
+                                            <XCircle size={12}/> Connection Failed
+                                        </span>
+                                    ) : currentData.loading ? (
+                                        <span className="flex items-center gap-1 text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                            <RefreshCw size={12} className="animate-spin"/> Checking...
+                                        </span>
+                                    ) : (
+                                        <span className="flex items-center gap-1 text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded">
+                                            <Check size={12}/> Connection Active
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                                 <div>
-                                    <span className="block text-xs font-bold text-blue-400 uppercase">Sheet ID</span>
-                                    <div className="font-mono bg-white/50 px-2 py-1 rounded select-all border border-blue-100 flex items-center justify-between">
+                                    <span className="block text-xs font-bold text-blue-400 uppercase mb-1">Spreadsheet ID</span>
+                                    <div className="font-mono bg-white/60 px-2 py-1.5 rounded select-all border border-blue-200 flex items-center justify-between text-xs">
                                         <span className="truncate">{sourceConfig.sheetId}</span>
                                         <a 
                                             href={`https://docs.google.com/spreadsheets/d/${sourceConfig.sheetId}`} 
                                             target="_blank" 
                                             rel="noreferrer"
-                                            className="text-blue-500 hover:text-blue-700"
+                                            className="text-blue-500 hover:text-blue-700 ml-2"
+                                            title="Open Sheet"
                                         >
                                             <ExternalLink size={12} />
                                         </a>
                                     </div>
                                 </div>
                                 <div>
-                                    <span className="block text-xs font-bold text-blue-400 uppercase">Tab Name</span>
-                                    <div className="font-mono bg-white/50 px-2 py-1 rounded select-all border border-blue-100">
+                                    <span className="block text-xs font-bold text-blue-400 uppercase mb-1">Worksheet Tab</span>
+                                    <div className="font-mono bg-white/60 px-2 py-1.5 rounded select-all border border-blue-200 text-xs font-bold flex items-center gap-2">
+                                        <Table size={12} className="text-blue-400"/>
                                         {sourceConfig.tab}
                                     </div>
                                 </div>
                             </div>
                             
-                            <div>
+                            <div className="mt-3">
                                 <span className="block text-xs font-bold text-blue-400 uppercase mb-1">Mapped Headers</span>
                                 <div className="flex flex-wrap gap-1">
                                     {Object.keys(mappings).map(key => (
-                                        <span key={key} className="bg-white px-2 py-0.5 rounded border border-blue-100 text-xs">
+                                        <span key={key} className={`px-2 py-0.5 rounded border text-[10px] font-medium ${
+                                            currentData.meta?.missingHeaders?.includes(key) 
+                                            ? 'bg-red-100 text-red-700 border-red-200 line-through' 
+                                            : 'bg-white text-blue-800 border-blue-100'
+                                        }`}>
                                             {key} {mappings[key].required && <span className="text-red-500">*</span>}
                                         </span>
                                     ))}
@@ -185,42 +242,46 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
       {/* Main Content Area */}
       <div className="flex-1 overflow-auto bg-slate-50 relative">
         
-        {/* Loading Overlay */}
+        {/* Loading Overlay (Only if active tab is loading, or on initial empty state) */}
         {currentData.loading && (
              <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm flex items-center justify-center">
                  <div className="flex flex-col items-center gap-3">
                     <RefreshCw className="animate-spin text-blue-600" size={32}/> 
-                    <p className="font-bold text-gray-600">Scanning Source...</p>
+                    <div className="text-center">
+                        <p className="font-bold text-gray-800">Checking Configuration...</p>
+                        <p className="text-xs text-gray-500 mt-1">Verifying headers & fetching data</p>
+                    </div>
                  </div>
              </div>
         )}
 
         {/* Error State */}
-        {currentData.error ? (
+        {!currentData.loading && currentData.error ? (
             <div className="flex flex-col items-center justify-center h-full p-8">
                 <div className="bg-red-50 border border-red-100 p-8 rounded-xl max-w-lg text-center shadow-sm">
                     <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
                         <AlertTriangle size={32} />
                     </div>
-                    <h3 className="text-lg font-bold text-red-900 mb-2">Connection Issue</h3>
-                    <p className="text-red-700 mb-4">{currentData.error}</p>
+                    <h3 className="text-lg font-bold text-red-900 mb-2">Source Configuration Error</h3>
+                    <p className="text-red-700 mb-4 text-sm">{currentData.error}</p>
                     
-                    {currentData.meta?.missingHeaders && (
-                        <div className="bg-white p-4 rounded border border-red-200 text-left mb-6">
-                            <p className="text-xs font-bold text-gray-500 uppercase mb-2">Missing Columns:</p>
+                    {currentData.meta?.missingHeaders && currentData.meta.missingHeaders.length > 0 && (
+                        <div className="bg-white p-4 rounded border border-red-200 text-left mb-6 shadow-inner">
+                            <p className="text-xs font-bold text-gray-500 uppercase mb-2">Missing Columns in Sheet:</p>
                             <div className="flex flex-wrap gap-2">
                                 {currentData.meta.missingHeaders.map((h: string) => (
-                                    <span key={h} className="text-xs font-mono bg-red-50 text-red-600 px-2 py-1 rounded border border-red-100">
+                                    <span key={h} className="text-xs font-mono bg-red-50 text-red-600 px-2 py-1 rounded border border-red-100 font-bold">
                                         {h}
                                     </span>
                                 ))}
                             </div>
+                            <p className="text-[10px] text-gray-400 mt-2">Please add these columns to the <strong>{sourceConfig.tab}</strong> tab in Google Sheets.</p>
                         </div>
                     )}
                     
                     <div className="flex gap-3 justify-center">
-                        <Button variant="secondary" onClick={() => setShowConfigInfo(true)}>View Config</Button>
-                        <Button variant="danger" onClick={scanAll}>Retry Scan</Button>
+                        <Button variant="secondary" onClick={() => setShowConfigInfo(true)}>View Details</Button>
+                        <Button variant="danger" onClick={scanAll}>Retry Connection</Button>
                     </div>
                 </div>
             </div>
@@ -257,7 +318,7 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
                             </thead>
                             <tbody className="divide-y divide-gray-100 text-sm">
                             {ready.map((row: any) => (
-                                <tr key={row.id} className="hover:bg-gray-50">
+                                <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-6 py-3 whitespace-nowrap">
                                     <Badge variant="success">Ready</Badge>
                                 </td>
@@ -274,7 +335,7 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
                                 </tr>
                             ))}
                             {invalid.map((row: any) => (
-                                <tr key={row.id} className="bg-red-50/30">
+                                <tr key={row.id} className="bg-red-50/30 hover:bg-red-50/50">
                                 <td className="px-6 py-3 whitespace-nowrap">
                                     <Badge variant="danger">Invalid</Badge>
                                 </td>
@@ -287,7 +348,7 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
                                 </tr>
                             ))}
                             {duplicates.map((row: any) => (
-                                <tr key={row.id} className="bg-yellow-50/30">
+                                <tr key={row.id} className="bg-yellow-50/30 hover:bg-yellow-50/50">
                                 <td className="px-6 py-3 whitespace-nowrap">
                                     <Badge variant="warning">Duplicate</Badge>
                                 </td>
@@ -302,7 +363,10 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, existingLeads = 
                             {ready.length === 0 && invalid.length === 0 && duplicates.length === 0 && (
                                 <tr>
                                     <td colSpan={Object.keys(mappings).length + 2} className="px-6 py-12 text-center text-gray-400">
-                                        No new data found in this source.
+                                        <div className="flex flex-col items-center">
+                                            <Database size={32} className="text-gray-300 mb-2" />
+                                            <p>No new data found in this source.</p>
+                                        </div>
                                     </td>
                                 </tr>
                             )}
