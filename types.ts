@@ -112,9 +112,8 @@ export interface AppOptions {
 
 export const MODULE_IDS = {
   CORE: '1bbzFwbQ3z3lQGZoo6Y3WfvuBRJXlXp8xrf3LuDEGs1A',
-  FLOWS: '1NWuPxl8WeFTSoYgzHrfgLoPXcMkqfsffvspTFTIJ5hE',
-  ACTIVITY: '1Y0x98DnlK4v3rapo4zoCZj-LoFnMcNMUdkaowYsBC38',
-  CONFIG: '1Z3MwuV9los8QAcCFQUgoKtpirCh9IPIkSLCfNHj8Jf4'
+  CONFIG: '1Z3MwuV9los8QAcCFQUgoKtpirCh9IPIkSLCfNHj8Jf4',
+  ACTIVITY: '1Y0x98DnlK4v3rapo4zoCZj-LoFnMcNMUdkaowYsBC38'
 };
 
 export const SHEET_IDS = {
@@ -317,7 +316,8 @@ export const calcSLAHealth = (lead: Lead, rules: SLARule[] = []): string => {
 };
 
 export interface Lead {
-  _rowIndex: number;
+  _rowIndex: number;       // Row index in LEAD_FLOWS sheet
+  _identityRowIndex: number; // Row index in Leads sheet
   // --- TABLE 1: LEADS (Identity) ---
   leadId: string;        // lead_id (Col 0)
   contactPerson: string; // name (Col 1)
@@ -326,7 +326,7 @@ export interface Lead {
   companyName: string;   // company (Col 4)
   city: string;          // city (Col 5)
   source: string;        // source_refs (Col 6)
-  // category (Col 7)
+  // category (Col 7 - Fallback)
   createdBy: string;     // created_by (Col 8)
   tags: string;          // tags (Col 9)
   identityStatus: string; // Status (Col 10)

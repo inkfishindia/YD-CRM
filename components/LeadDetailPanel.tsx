@@ -6,6 +6,7 @@ import { Button } from './ui/Button';
 import { Select, Input, Textarea } from './ui/Form';
 import { Badge } from './ui/Badge';
 import { TemplateModal } from './TemplateModal';
+import { fetchActivityLogsForLead } from '../services/sheetService';
 
 interface LeadDetailPanelProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ interface LeadDetailPanelProps {
   templates?: MessageTemplate[];
   stageRules?: StageRule[];
   slaRules?: SLARule[];
-  activityLogs?: ActivityLog[];
+  activityLogs?: ActivityLog[]; // Provided logs (session only)
   onLogActivity?: (type: string, notes: string) => void;
 }
 
@@ -75,6 +76,10 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'comms' | 'notes' | 'system'>('all');
   const [editingField, setEditingField] = useState<string | null>(null);
+  
+  // Lazy Loading Logs
+  const [historicalLogs, setHistoricalLogs] = useState<ActivityLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   const isDirtyRef = useRef(false);
   const formDataRef = useRef(lead);
@@ -94,6 +99,13 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
       setSaveStatus('idle');
       isDirtyRef.current = false;
       setEditingField(null);
+      
+      // Trigger lazy load
+      setLoadingLogs(true);
+      fetchActivityLogsForLead(lead.leadId).then(logs => {
+          setHistoricalLogs(logs);
+          setLoadingLogs(false);
+      });
     }
   }, [isOpen, lead.leadId]);
 
@@ -397,13 +409,21 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
       return <Input label={label} value={formData[key] as string || ''} onChange={(e) => handleChange(key, e.target.value)} {...commonProps} />;
   };
 
+  const allLogs = useMemo(() => {
+      // Merge live session logs (activityLogs) with lazy loaded historical logs
+      const sessionLogs = activityLogs.filter(l => l.leadId === lead.leadId);
+      // Avoid duplicates if session log is already in history (unlikely given timestamps but safe)
+      const sessionIds = new Set(sessionLogs.map(l => l.logId));
+      return [...sessionLogs, ...historicalLogs.filter(l => !sessionIds.has(l.logId))];
+  }, [activityLogs, historicalLogs, lead.leadId]);
+
   const filteredLogs = useMemo(() => {
-      let logs = activityLogs.filter(l => l.leadId === lead.leadId);
+      let logs = allLogs;
       if (timelineFilter === 'comms') logs = logs.filter(l => ['Call', 'WhatsApp', 'Email'].includes(l.activityType));
       if (timelineFilter === 'notes') logs = logs.filter(l => l.activityType === 'Note');
       if (timelineFilter === 'system') logs = logs.filter(l => l.activityType.includes('Change') || l.activityType.includes('Update') || l.activityType.includes('Switch'));
-      return logs;
-  }, [activityLogs, lead.leadId, timelineFilter]);
+      return logs.sort((a,b) => (b.logId > a.logId ? 1 : -1)); // Sort desc
+  }, [allLogs, timelineFilter]);
 
   if (!isOpen) return null;
 
@@ -555,14 +575,17 @@ export const LeadDetailPanel: React.FC<LeadDetailPanelProps> = ({
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
                             <History size={14} className="text-gray-500"/> Notes & Activity
                         </h3>
-                        <div className="flex bg-gray-100 rounded p-0.5">
-                            {['all', 'comms', 'notes'].map(f => (
-                                <button 
-                                    key={f} 
-                                    onClick={() => setTimelineFilter(f as any)} 
-                                    className={`px-3 py-1 text-[10px] uppercase font-bold rounded transition-all ${timelineFilter === f ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
-                                >{f}</button>
-                            ))}
+                        <div className="flex items-center gap-2">
+                            {loadingLogs && <span className="text-[10px] text-gray-400 flex items-center gap-1"><Loader2 size={10} className="animate-spin"/> Syncing History...</span>}
+                            <div className="flex bg-gray-100 rounded p-0.5">
+                                {['all', 'comms', 'notes'].map(f => (
+                                    <button 
+                                        key={f} 
+                                        onClick={() => setTimelineFilter(f as any)} 
+                                        className={`px-3 py-1 text-[10px] uppercase font-bold rounded transition-all ${timelineFilter === f ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >{f}</button>
+                                ))}
+                            </div>
                         </div>
                      </div>
                     

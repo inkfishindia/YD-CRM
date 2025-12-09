@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { saveFieldMappings, fetchRemoteHeaders } from '../services/sheetService';
+import { fetchRemoteHeaders } from '../services/sheetService';
 import { IntakeService } from '../services/intakeService';
 import { FieldMapRule, SourceConfig, IntakeRow } from '../types';
 import { Loader2, Play, AlertTriangle, CheckCircle2, FileText, Database, ArrowRight, Settings, Wand2, RefreshCw } from 'lucide-react';
@@ -116,15 +116,15 @@ export const SourceSettingsModal: React.FC<SourceSettingsModalProps> = ({ isOpen
         if (!source) return;
         setSaving(true);
         const newMappings = Object.entries(localMappings)
-            .filter(([_, val]) => val.header && val.header.trim() !== '')
+            .filter(([_, val]) => (val as MappingState).header && (val as MappingState).header.trim() !== '')
             .map(([field, val]) => ({
-                sourceHeader: val.header,
+                sourceHeader: (val as MappingState).header,
                 intakeField: field,
-                transform: val.transform,
+                transform: (val as MappingState).transform,
                 isRequired: field === 'companyName'
             }));
         
-        await saveFieldMappings(source.layer, newMappings);
+        await IntakeService.saveFieldMappings(source.layer, newMappings);
         setSaving(false);
         setActiveTab('test'); // Move to test tab after save
     };
@@ -139,9 +139,9 @@ export const SourceSettingsModal: React.FC<SourceSettingsModalProps> = ({ isOpen
         const tempRules: FieldMapRule[] = Object.entries(localMappings).map(([field, val]) => ({
             id: 'temp',
             sourceLayer: source.layer,
-            sourceHeader: val.header,
+            sourceHeader: (val as MappingState).header,
             intakeField: field,
-            transform: val.transform,
+            transform: (val as MappingState).transform,
             isRequired: field === 'companyName',
             targetTable: 'Leads',
             notes: ''
@@ -230,7 +230,8 @@ export const SourceSettingsModal: React.FC<SourceSettingsModalProps> = ({ isOpen
                                             <tr key={f.key} className="hover:bg-gray-50">
                                                 <td className="px-4 py-3">
                                                     <div className="font-medium text-gray-900">{f.label}</div>
-                                                    {f.required && <span className="text-[10px] text-red-500 font-bold">Required</span>}
+                                                    <div className="text-[10px] font-mono text-gray-400" title="System Field Key">{f.key}</div>
+                                                    {f.required && <span className="text-[10px] text-red-500 font-bold mt-0.5 block">Required</span>}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <select 

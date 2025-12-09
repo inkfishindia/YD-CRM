@@ -4,7 +4,7 @@ import { Modal } from './ui/Modal';
 import { Input, Select } from './ui/Form';
 import { Button } from './ui/Button';
 import { SourceConfig } from '../types';
-import { addSourceConfig } from '../services/sheetService';
+import { IntakeService } from '../services/intakeService';
 
 interface AddSourceModalProps {
     isOpen: boolean;
@@ -25,7 +25,7 @@ export const AddSourceModal: React.FC<AddSourceModalProps> = ({ isOpen, onClose,
     const handleSubmit = async () => {
         if (!formData.layer || !formData.sheetId || !formData.tab) return;
         setLoading(true);
-        const success = await addSourceConfig(formData as SourceConfig);
+        const success = await IntakeService.addSourceConfig(formData as SourceConfig);
         setLoading(false);
         if (success) {
             onSuccess(formData as SourceConfig);

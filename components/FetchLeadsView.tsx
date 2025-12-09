@@ -1,11 +1,11 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { FileSpreadsheet, ExternalLink, Import, Stethoscope, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Save, Trash2, XCircle, Loader2, Play, CheckSquare, Square, Filter, User, Phone, Mail, MapPin, ShoppingBag, MessageSquare, Building2, UserPlus, Layers, Table, FileText, Plus } from 'lucide-react';
-import { SOURCE_CONFIG, fetchLeadsFromSource, fetchRemoteHeaders, fetchRemoteSheetNames, addLead, fetchIntakeConfig } from '../services/sheetService';
+import { SOURCE_CONFIG, fetchRemoteHeaders, fetchRemoteSheetNames, addLead } from '../services/sheetService';
+import { IntakeService } from '../services/intakeService';
 import { Lead, GoogleUser, SourceConfig, FieldMapRule } from '../types';
 
 interface FetchLeadsViewProps {
@@ -304,7 +304,7 @@ export const FetchLeadsView: React.FC<FetchLeadsViewProps> = ({ user, onSetImpor
     useEffect(() => {
         // Load initial config
         const load = async () => {
-            const res = await fetchIntakeConfig();
+            const res = await IntakeService.fetchIntakeConfig();
             if (res.success) {
                 setSources(res.sources);
             }
@@ -314,15 +314,34 @@ export const FetchLeadsView: React.FC<FetchLeadsViewProps> = ({ user, onSetImpor
 
     const handleScan = async () => {
         setLoading(true);
+        // Using scanAllSources for compatibility
+        const res = await IntakeService.scanAllSources();
         const allLeads: Record<string, Lead[]> = {};
-        const sourcesToScan = sources.length > 0 ? sources : Object.entries(SOURCE_CONFIG).map(([k,v]) => ({ layer: k, sheetId: v.id, tab: v.sheetName, type: 'Vendor', tags: [], isActive: true }));
-
-        for (const src of sourcesToScan) {
-             const res = await fetchLeadsFromSource(src.layer as any);
-             if (res.success) {
-                 allLeads[src.layer] = res.leads;
-             }
+        
+        if (res.rows) {
+             res.rows.forEach(r => {
+                 // Convert IntakeRow back to Lead structure approximately for this view
+                 // In a real refactor, this view should consume IntakeRows directly or be removed
+                 if (!allLeads[r.sourceLayer]) allLeads[r.sourceLayer] = [];
+                 allLeads[r.sourceLayer].push({
+                     leadId: r.id,
+                     companyName: r.companyName,
+                     contactPerson: r.contactPerson,
+                     number: r.number,
+                     email: r.email,
+                     city: r.city,
+                     source: r.sourceLayer, // Use layer as source
+                     estimatedQty: r.estimatedQty,
+                     remarks: r.remarks,
+                     // Default required fields
+                     status: 'New',
+                     stage: 'New',
+                     _rowIndex: -1, // Not in sheet yet
+                     date: r.date
+                 } as any);
+             });
         }
+        
         setLeadsBySource(allLeads);
         setLoading(false);
     };

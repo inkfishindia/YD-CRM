@@ -4,7 +4,8 @@ import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { SourceConfig } from '../types';
-import { fetchIntakeConfig, updateSourceStatus, deleteSourceConfig, fetchDynamicSheet } from '../services/sheetService';
+import { IntakeService } from '../services/intakeService';
+import { fetchDynamicSheet } from '../services/sheetService';
 import { 
     Table, Database, Plus, Trash2, Edit2, Play, Eye, 
     ToggleLeft, ToggleRight, Loader2, RefreshCw, AlertTriangle 
@@ -36,10 +37,10 @@ export const IntakeManagerModal: React.FC<IntakeManagerModalProps> = ({ isOpen, 
     const loadSources = async () => {
         setLoading(true);
         try {
-            const res = await fetchIntakeConfig();
+            const res = await IntakeService.fetchIntakeConfig();
             if (res.success) {
                 setSources(res.sources);
-                setConfigMaps(res.fieldMaps);
+                setConfigMaps(res.mappings);
             }
         } catch (e) {
             console.error(e);
@@ -50,7 +51,7 @@ export const IntakeManagerModal: React.FC<IntakeManagerModalProps> = ({ isOpen, 
     const handleToggleActive = async (source: SourceConfig) => {
         if (!source._rowIndex) return;
         const newState = !source.isActive;
-        const success = await updateSourceStatus(source._rowIndex, newState);
+        const success = await IntakeService.updateSourceStatus(source._rowIndex, newState);
         if (success) {
             setSources(prev => prev.map(s => s.layer === source.layer ? { ...s, isActive: newState } : s));
             onSourceUpdated();
@@ -63,7 +64,7 @@ export const IntakeManagerModal: React.FC<IntakeManagerModalProps> = ({ isOpen, 
         if (!source._rowIndex) return;
         if (!confirm(`Are you sure you want to delete ${source.layer}? This cannot be undone easily.`)) return;
         
-        const success = await deleteSourceConfig(source._rowIndex);
+        const success = await IntakeService.deleteSourceConfig(source._rowIndex);
         if (success) {
             setSources(prev => prev.filter(s => s.layer !== source.layer));
             onSourceUpdated();

@@ -4,7 +4,7 @@ import { LegendItem, StageRule, SLARule, AutoActionRule, MessageTemplate, Google
 import { Button } from './ui/Button';
 import { Input, Select, Textarea } from './ui/Form';
 import { Edit2, Plus, CheckCircle, Trash2, Copy, AlertTriangle, Link, Save, RotateCcw, Cloud, Database, CloudOff, LogIn, Hammer, Loader2, MinusCircle, Table, BookOpen, Info, List, Stethoscope, Wrench, Shield, Zap, LayoutTemplate, Activity, UploadCloud, Tag, GitMerge, ArrowDown, Ban, CheckSquare, Clock, ArrowRight, Users, History, MessageCircle, FileSpreadsheet, Box, Network, ExternalLink, RefreshCw, Import, FileText, Columns, Compass, CheckCircle2, XCircle, Layout, Sun, FileSearch, RefreshCcw, Check, Square, Play, Terminal, Layers } from 'lucide-react';
-import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populateConfigData, fetchRemoteHeaders, SHEET_NAME_LEADS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY, SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES, HEADER_LEAD_CSV, HEADER_LEGEND_CSV, HEADER_ACTIVITY_CSV, HEADER_STAGE_RULES_CSV, HEADER_SLA_RULES_CSV, HEADER_AUTO_ACTION_CSV, HEADER_TEMPLATES_CSV, SOURCE_CONFIG, SHEET_NAME_IDENTITY, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_DROPSHIP_FLOWS, SHEET_NAME_STORES, SHEET_NAME_ACCOUNT_MAP, SHEET_NAME_FLOW_HISTORY, HEADER_IDENTITY_CSV, HEADER_LEAD_FLOW_CSV, HEADER_DROPSHIP_FLOW_CSV, HEADER_STORE_CSV, HEADER_ACCOUNT_MAP_CSV, HEADER_FLOW_HISTORY_CSV, fetchLeadsFromSource, analyzeSheetColumns, ColumnMetadata, fetchRemoteSheetNames, SYSTEM_SHEET_NAMES, getSpreadsheetId, fetchIntakeConfig, saveFieldMappings } from '../services/sheetService';
+import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populateConfigData, fetchRemoteHeaders, SHEET_NAME_LEADS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY, SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES, HEADER_LEAD_CSV, HEADER_LEGEND_CSV, HEADER_ACTIVITY_CSV, HEADER_STAGE_RULES_CSV, HEADER_SLA_RULES_CSV, HEADER_AUTO_ACTION_CSV, HEADER_TEMPLATES_CSV, SOURCE_CONFIG, SHEET_NAME_IDENTITY, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_DROPSHIP_FLOWS, SHEET_NAME_STORES, SHEET_NAME_ACCOUNT_MAP, SHEET_NAME_FLOW_HISTORY, HEADER_IDENTITY_CSV, HEADER_LEAD_FLOW_CSV, HEADER_DROPSHIP_FLOW_CSV, HEADER_STORE_CSV, HEADER_ACCOUNT_MAP_CSV, HEADER_FLOW_HISTORY_CSV, analyzeSheetColumns, ColumnMetadata, fetchRemoteSheetNames, SYSTEM_SHEET_NAMES, getSpreadsheetId } from '../services/sheetService';
 import { IntakeService } from '../services/intakeService';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
@@ -329,7 +329,6 @@ const TemplatesSettings: React.FC<{ templates: MessageTemplate[], onUpdate: any,
 );
 
 const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads: (leads: Lead[]) => void, onViewImports: () => void }> = ({ user, onSetImportedLeads, onViewImports }) => {
-    // 1. Load Dynamic Sources from Sheet
     const [dynamicSources, setDynamicSources] = useState<SourceConfig[]>([]);
     const [fieldMaps, setFieldMaps] = useState<FieldMapRule[]>([]);
     const [loadingConfig, setLoadingConfig] = useState(false);
@@ -338,10 +337,10 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
         const load = async () => {
             setLoadingConfig(true);
             try {
-                const res = await fetchIntakeConfig();
+                const res = await IntakeService.fetchIntakeConfig();
                 if (res.success) {
                     setDynamicSources(res.sources);
-                    setFieldMaps(res.fieldMaps);
+                    setFieldMaps(res.mappings);
                 }
             } catch (e) {
                 console.error("Failed to load source config", e);
@@ -351,10 +350,8 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
         load();
     }, []);
 
-    // 2. Fallback if no dynamic sources found
     const staticSources = Object.entries(SOURCE_CONFIG).map(([key, config]) => ({ key, name: key, ...config, headers: [] as string[] }));
     
-    // Normalize for display
     const displaySources = dynamicSources.length > 0 
         ? dynamicSources.map(s => ({ key: s.layer, name: s.layer, id: s.sheetId, sheetName: s.tab, headers: [] as string[] })) 
         : staticSources;
@@ -392,22 +389,8 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
     };
 
     const handleImport = async (sourceKey: string) => {
-        setLoadingState({ action: 'import', key: sourceKey });
-        setImportResult(null);
-        
-        const res = await fetchLeadsFromSource(sourceKey as any);
-        
-        setLoadingState(null);
-        
-        if (res.success && res.leads.length > 0) {
-            onSetImportedLeads(res.leads);
-            onViewImports(); // Navigate to Imports View
-        } else {
-            setImportResult({
-                message: res.message || "No new leads found.",
-                type: res.success ? 'success' : 'error'
-            });
-        }
+        // Redirect to Intake Inbox as per new methodology
+        onViewImports();
     };
 
     return (
@@ -425,13 +408,6 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
             </div>
 
             {loadingConfig && <div className="text-sm text-gray-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin"/> Loading configurations from Sheet...</div>}
-
-            {importResult && (
-                <div className={`p-4 rounded-xl border flex items-center gap-3 animate-fade-in ${importResult.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                    {importResult.type === 'success' ? <CheckCircle size={20}/> : <AlertTriangle size={20}/>}
-                    <div className="font-medium text-sm">{importResult.message}</div>
-                </div>
-            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {displaySources.map(src => (
@@ -462,10 +438,9 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
                                 className="w-full"
                                 onClick={() => handleImport(src.key)}
                                 disabled={!user || !!loadingState}
-                                isLoading={loadingState?.key === src.key && loadingState?.action === 'import'}
                                 icon={<Import size={14}/>}
                             >
-                                Fetch Leads
+                                Go to Inbox
                             </Button>
                             <Button 
                                 variant="secondary" 
@@ -486,8 +461,7 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800">
                     <p className="font-bold flex items-center gap-2"><Info size={16}/> Using Default System Sources</p>
                     <p className="mt-1">
-                        To add custom sources, add rows to the <strong>Sources</strong> tab in your Google Sheet.
-                        <br/>Format: Name | Spreadsheet ID | Tab Name | Type | Tags
+                        To add custom sources, go to the Inbox view or add rows to the <strong>Intake_Sources</strong> tab in your Google Sheet.
                     </p>
                 </div>
             )}

@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { scanAllSources, checkDuplicates, importRows, IntakeService, SourceStat } from '../services/intakeService';
+import { IntakeService, SourceStat } from '../services/intakeService';
 import { IntakeRow, GoogleUser, SourceConfig, FieldMapRule, Lead } from '../types';
+import { SOURCE_CONFIG } from '../services/sheetService';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { SourceSettingsModal } from './SourceSettingsModal';
@@ -33,9 +34,6 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     
     // Config & UI State
-    const [configSources, setConfigSources] = useState<SourceConfig[]>([]);
-    const [showSourceSettings, setShowSourceSettings] = useState<SourceConfig | null>(null);
-    const [showAddSource, setShowAddSource] = useState(false);
     const [showManager, setShowManager] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -50,28 +48,22 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
         setLoading(true);
         setError(null);
         try {
-            // 1. Scan (fetches and maps)
-            const result = await scanAllSources();
-            let scannedRows = result.rows;
+            // 1. Scan Data
+            const result = await IntakeService.scanAllSources();
             
-            // 2. Duplicate Check
-            if (scannedRows.length > 0) {
-                scannedRows = await checkDuplicates(scannedRows);
-            }
+            // 2. Duplicate Check using existing leads from props if provided, or rely on service
+            // The service checkDuplicates fetches internally, but we can filter against props too if needed.
+            // Current service implementation fetches core sheet.
+            const checked = await IntakeService.checkDuplicates(result.rows);
             
-            setRows(scannedRows);
+            setRows(checked);
             setStats(result.stats);
             
-            // Set active source if not set
             if (!activeSource && result.stats.length > 0) {
                 const firstWithData = result.stats.find(s => s.count > 0);
                 if (firstWithData) setActiveSource(firstWithData.name);
                 else setActiveSource(result.stats[0]?.name || null);
             }
-
-            // Fetch Config for Menus
-            const conf = await IntakeService.fetchIntakeConfig();
-            if (conf.success) setConfigSources(conf.sources);
 
         } catch (e: any) {
             setError(e.message);
@@ -100,7 +92,7 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
     // Actions
     const handleImport = async (row: IntakeRow) => {
         setProcessingId(row.id);
-        const res = await importRows([row], user?.name);
+        const res = await IntakeService.importRows([row], user?.name || 'System');
         setProcessingId(null);
         if (res.successCount > 0) {
             setRows(prev => prev.filter(r => r.id !== row.id));
@@ -117,7 +109,7 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
         if (!confirm(`Import ${toImport.length} leads?`)) return;
         
         setLoading(true);
-        const res = await importRows(toImport, user?.name);
+        const res = await IntakeService.importRows(toImport, user?.name);
         setLoading(false);
         
         if (res.successCount > 0) {
@@ -190,6 +182,11 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
                                 )}
                             </button>
                         ))}
+                        {stats.length === 0 && !loading && (
+                            <div className="px-3 py-4 text-xs text-center text-gray-400">
+                                No sources active.
+                            </div>
+                        )}
                     </div>
                 </div>
 

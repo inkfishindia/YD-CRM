@@ -2,15 +2,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Lead, GoogleUser, AppOptions, LegendItem, StageRule, SLARule, 
-  AutoActionRule, MessageTemplate, ActivityLog, determineLeadHealth, 
-  ConfigStore 
+  AutoActionRule, MessageTemplate, ActivityLog, determineLeadHealth
 } from './types';
 import { 
   MOCK_LEADS, MOCK_LEGENDS, MOCK_STAGE_RULES, 
   MOCK_SLA_RULES, MOCK_AUTO_ACTIONS, MOCK_TEMPLATES 
 } from './data/mock/mockData';
-import { initGoogleAuth, loginToGoogle, logoutGoogle, restoreSession, trySilentRefresh } from './services/googleAuth';
-import { updateLead, loadSheetRange, getSpreadsheetId, setSpreadsheetId, SHEET_NAME_LEADS, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_ACTIVITY, addActivityLog, fetchAllLeads } from './services/sheetService';
+import { initGoogleAuth, loginToGoogle, logoutGoogle, restoreSession, trySilentRefresh, safeSetItem, safeGetItem } from './services/googleAuth';
+import { updateLead, getSpreadsheetId, setSpreadsheetId, addActivityLog, fetchAllLeads, addLead, loadSheetRange, MODULE_IDS } from './services/sheetService';
 
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -31,6 +30,9 @@ import { Toast } from './components/Toast';
 
 type ViewState = 'contacts' | 'accounts' | 'flows' | 'stores' | 'products' | 'orders' | 'reports' | 'settings' | 'board' | 'list' | 'tasks' | 'intake';
 
+const CACHE_KEY_LEADS = 'yds_leads_cache';
+const CACHE_KEY_LEGENDS = 'yds_legends_cache';
+
 const App: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<GoogleUser | null>(null);
@@ -40,6 +42,7 @@ const App: React.FC = () => {
 
   // App Data State
   const [leads, setLeads] = useState<Lead[]>([]);
+  // Activity Logs are now lazy-loaded, so we only keep track of logs added in the current session
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   
   // Config State
@@ -90,21 +93,23 @@ const App: React.FC = () => {
 
   // --- Auth & Init ---
   useEffect(() => {
+    // 1. Instant Cache Hydration (SWR Pattern)
+    hydrateFromCache();
+
+    // 2. Auth & Network Fetch
     initGoogleAuth(async (success) => {
       if (success) {
         const session = restoreSession();
         if (session) {
           setUser(session.user);
-          loadData();
+          loadData(); // Background fetch
         } else {
-          // Attempt silent refresh
           const refreshed = await trySilentRefresh();
           if (refreshed) {
             setUser(refreshed.user);
-            loadData();
+            loadData(); // Background fetch
           } else {
-            // Guest / Offline Mode - Load Mocks
-            setLeads(MOCK_LEADS as any);
+            // Guest mode
             setSyncStatus('success'); 
           }
         }
@@ -114,6 +119,38 @@ const App: React.FC = () => {
       setAuthLoading(false);
     });
   }, []);
+
+  const hydrateFromCache = () => {
+      const cachedLeads = safeGetItem(CACHE_KEY_LEADS);
+      const cachedLegends = safeGetItem(CACHE_KEY_LEGENDS);
+      
+      if (cachedLeads) {
+          try {
+              setLeads(JSON.parse(cachedLeads));
+          } catch(e) {}
+      }
+      if (cachedLegends) {
+          try {
+              updateLegends(JSON.parse(cachedLegends));
+          } catch(e) {}
+      }
+  };
+
+  const updateLegends = (newLegends: LegendItem[]) => {
+      setLegends(newLegends);
+      // Map legends to appOptions
+      const newOptions: any = { ...appOptions };
+      const map = {
+          'owner': 'owners', 'stage': 'stages', 'source': 'sources', 
+          'category': 'categories', 'priority': 'priorities'
+      };
+      
+      Object.entries(map).forEach(([listName, optionKey]) => {
+          const items = newLegends.filter(l => l.listName === listName && l.isActive).sort((a,b) => a.displayOrder - b.displayOrder).map(l => l.value);
+          if (items.length > 0) newOptions[optionKey] = items;
+      });
+      setAppOptions(newOptions);
+  };
 
   const handleLogin = async () => {
     try {
@@ -129,22 +166,41 @@ const App: React.FC = () => {
   const handleLogout = () => {
     logoutGoogle();
     setUser(null);
-    setLeads(MOCK_LEADS as any); // Fallback to mock on logout
+    setLeads(MOCK_LEADS as any);
   };
 
-  // --- Data Loading ---
+  // --- Data Loading (Optimized) ---
   const loadData = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      if (user) {
-         const realLeads = await fetchAllLeads();
-         if (realLeads.length > 0) {
-             setLeads(realLeads);
-         } else {
-             // Fallback or empty state
-             console.log("No leads fetched or error, checking console");
-         }
+      // Parallel fetch for Leads and Config
+      const [leadsData, legendsData] = await Promise.all([
+          fetchAllLeads(),
+          loadSheetRange(getSpreadsheetId(), 'Legend!A:G')
+      ]);
+
+      if (leadsData) {
+          setLeads(leadsData);
+          safeSetItem(CACHE_KEY_LEADS, JSON.stringify(leadsData));
+          
+          if (!authLoading) {
+             setToast({ msg: 'Synced with Google Sheets', type: 'success' });
+          }
       }
+
+      if (legendsData && legendsData.length > 0) {
+          const realLegends = legendsData.slice(1).map((r: any[]) => ({
+            listName: r[0], value: r[1], displayOrder: r[2], color: r[3], 
+            isDefault: r[4] === true || r[4] === 'TRUE', 
+            isActive: r[5] === true || r[5] === 'TRUE',
+            probability: r[6]
+          })).filter((l: any) => l.listName) as LegendItem[];
+          
+          updateLegends(realLegends);
+          safeSetItem(CACHE_KEY_LEGENDS, JSON.stringify(realLegends));
+      }
+
       setSyncStatus('success');
     } catch (e) {
       console.error(e);
@@ -171,14 +227,17 @@ const App: React.FC = () => {
         actionOverdue: health.isOverdue ? 'OVERDUE' : health.status === 'Warning' ? 'DUE SOON' : 'OK' 
     };
 
-    const oldLead = leads.find(l => l.leadId === calculatedLead.leadId);
-    setLeads(prev => prev.map(l => l.leadId === calculatedLead.leadId ? calculatedLead : l));
-    
-    // Logic for Stage Change Logging happens in sheetService for source of truth,
-    // but here we log UI interactions if needed for optimistic feedback.
+    setLeads(prev => {
+        const next = prev.map(l => l.leadId === calculatedLead.leadId ? calculatedLead : l);
+        safeSetItem(CACHE_KEY_LEADS, JSON.stringify(next)); // Update cache immediately
+        return next;
+    });
     
     if (user) {
-        await updateLead(calculatedLead, user.email);
+        // Fire and forget (Optimistic)
+        updateLead(calculatedLead, user.email).then(success => {
+            if (!success) setSyncStatus('error');
+        });
         
         if (!options.skipLog) {
              const log = {
@@ -191,23 +250,38 @@ const App: React.FC = () => {
                 fromValue: '',
                 toValue: ''
             };
+            // Only add to local session logs for UI feedback, full logs fetched lazily
             setActivityLogs(prev => [log, ...prev]);
             
-            // Note: Stage changes are logged by updateLead inside sheetService.
-            // We only log explicit non-stage updates here if needed.
             if (options.customLogType && options.customLogType !== 'Stage Change') {
-                 await addActivityLog(log);
+                 addActivityLog(log);
             }
         }
     }
   }, [slaRules, user, leads]);
 
   const handleAddLead = async (newLead: Partial<Lead>) => {
-      // Create new lead logic
       const fullLead = { ...newLead, status: 'New', stage: 'New' } as Lead;
-      setLeads(prev => [fullLead, ...prev]);
-      // In real scenario, addLead service would be called
-      setToast({ msg: 'Lead Created', type: 'success' });
+      
+      // Optimistic add locally
+      setLeads(prev => {
+          const next = [fullLead, ...prev];
+          safeSetItem(CACHE_KEY_LEADS, JSON.stringify(next));
+          return next;
+      });
+      
+      if (user) {
+          const success = await addLead(fullLead);
+          if (success) {
+              setToast({ msg: 'Lead Created & Saved', type: 'success' });
+              // Reload to get correct row indices
+              loadData(); 
+          } else {
+              setToast({ msg: 'Saved locally only (Sync Failed)', type: 'error' });
+          }
+      } else {
+          setToast({ msg: 'Lead Created (Offline)', type: 'success' });
+      }
   };
 
   const handleFilterChange = (key: string, value: string) => {
@@ -218,7 +292,6 @@ const App: React.FC = () => {
   const filteredLeads = useMemo(() => {
       let data = leads;
       
-      // Global Search
       if (searchQuery) {
           const lower = searchQuery.toLowerCase();
           data = data.filter(l => 
@@ -228,12 +301,10 @@ const App: React.FC = () => {
           );
       }
 
-      // Tab Filter (Owner)
       if (currentOwnerFilter !== 'All') {
           data = data.filter(l => l.ydsPoc === currentOwnerFilter);
       }
 
-      // Advanced Filters
       if (advancedFilters.stage !== 'All') data = data.filter(l => l.status === advancedFilters.stage);
       if (advancedFilters.owner !== 'All') data = data.filter(l => l.ydsPoc === advancedFilters.owner);
       if (advancedFilters.category !== 'All') data = data.filter(l => l.category === advancedFilters.category);
@@ -306,7 +377,6 @@ const App: React.FC = () => {
       if (currentView === 'products') return <ProductsView />;
       if (currentView === 'orders') return <OrdersView />;
 
-      // Core Views (Board/List/Tasks)
       return (
           <>
              <StatsBar leads={leads} />
@@ -318,7 +388,7 @@ const App: React.FC = () => {
                         leads={filteredLeads} 
                         stages={appOptions.stages}
                         onUpdateLead={handleUpdateLead}
-                        loading={loading}
+                        loading={loading && leads.length === 0} // Only show loader if no cache
                         onQuickNote={(l) => { /* open note */ }}
                         appOptions={appOptions}
                         stageRules={stageRules}
@@ -335,7 +405,7 @@ const App: React.FC = () => {
                     leads={filteredLeads}
                     viewMode={currentView}
                     onUpdateLead={handleUpdateLead}
-                    loading={loading}
+                    loading={loading && leads.length === 0}
                     onQuickNote={(l) => {}}
                     appOptions={appOptions}
                     stageRules={stageRules}

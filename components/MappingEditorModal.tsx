@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import { saveFieldMappings, fetchRemoteHeaders } from '../services/sheetService';
+import { fetchRemoteHeaders } from '../services/sheetService';
+import { IntakeService } from '../services/intakeService';
 import { FieldMapRule, SourceConfig } from '../types';
 import { Loader2 } from 'lucide-react';
 
@@ -62,7 +64,7 @@ export const MappingEditorModal: React.FC<MappingEditorModalProps> = ({ isOpen, 
                 isRequired: field === 'companyName'
             }));
         
-        await saveFieldMappings(source.layer, newMappings);
+        await IntakeService.saveFieldMappings(source.layer, newMappings);
         setSaving(false);
         onClose();
         alert("Mappings saved. Please rescan sources to apply changes.");
