@@ -1,176 +1,24 @@
 
-
-export interface Lead {
-  _rowIndex: number;
-  // --- TABLE 1: LEADS (Identity) ---
-  leadId: string;        // lead_id (Col 0)
-  contactPerson: string; // name (Col 1)
-  number: string;        // phone (Col 2)
-  email: string;         // email (Col 3)
-  companyName: string;   // company (Col 4)
-  city: string;          // city (Col 5)
-  source: string;        // source_refs (Col 6)
-  // category (Col 7) - Shared with Flow, usually Identity is high-level, Flow is operational
-  createdBy: string;     // created_by (Col 8)
-  tags: string;          // tags (Col 9)
-  identityStatus: string; // Status (Col 10) - Renamed to avoid conflict with Flow status
-  createdAt: string;     // created_at (Col 11)
-  leadScore: string;     // lead_score (Col 12)
-  remarks: string;       // note/description (Col 13)
-  sourceRowId: string;   // source_row_id (Col 14)
-  info: string;          // Info (Col 15)
-
-  // --- TABLE 2: LEAD_FLOWS (Operational) ---
-  flowId: string;        // flow_id (Col 0)
-  // lead_id (Col 1) - Join Key
-  originalChannel: string; // original_channel (Col 2)
-  channel: string;       // channel (Col 3)
-  owner: string;         // owner (Col 4)
-  ydsPoc: string;        // Alias for owner
-  status: string;        // status (Col 5)
-  stage: string;         // stage (Col 6)
-  sourceFlowTag: string; // source_flow_tag (Col 7)
-  // created_at (Col 8) - Flow specific
-  updatedAt: string;     // updated_at (Col 9)
-  startDate: string;     // start_date (Col 10)
-  expectedCloseDate: string; // expected_close_date (Col 11)
-  wonDate: string;       // won_date (Col 12)
-  lostDate: string;      // lost_date (Col 13)
-  lostReason: string;    // lost_reason (Col 14)
-  notes: string;         // notes (Col 15)
-  estimatedQty: number;  // estimated_qty (Col 16)
-  productType: string;   // product_type (Col 17)
-  printType: string;     // print_type (Col 18)
-  priority: string;      // priority (Col 19)
-  contactStatus: string; // contact_status (Col 20)
-  paymentUpdate: string; // payment_update (Col 21)
-  nextAction: string;    // next_action_type (Col 22)
-  nextActionDate: string;// next_action_date (Col 23)
-  intent: string;        // intent (Col 24)
-  category: string;      // category (Col 25) - This drives the UI
-  customerType: string;  // customer_type (Col 26)
-
-  // --- UI / Computed Helpers (Not in Schema directly but mapped) ---
-  date: string;          // Mapped from createdAt for UI display
-  orderInfo: string;     // Often mapped to 'notes' or 'Info'
-  contactAttempts: number; // UI only or mapped to notes parsing
-  lastContactDate: string; // UI only or mapped to updatedAt
-  lastAttemptDate: string; 
-  
-  // Metrics
-  slaStatus: string;       
-  slaHealth: string;       
-  daysOpen: string;        
-  actionOverdue: string;   
-  firstResponseTime: string; 
-  stageChangedDate: string;  
-  
-  // Dropshipping Specifics (UI Fields, likely mapped to 'notes' or 'Info' in strict schema)
-  platformType: string;      
-  integrationReady: string;  
-  storeUrl: string;          
-  accountCreated: string;    
-  dashboardLinkSent: string; 
-  onboardingStartedDate: string; 
-  activationDate: string;    
-  
-  // Workflow Specifics
-  sampleRequired: string;    
-  sampleStatus: string;      
-  workflowType: string;      
-  designsReady: string;      
-  firstProductCreated: string; 
-  whatsappMessage: string;
-}
-
-export interface ActivityLog {
-  logId: string;
-  leadId: string;
-  flowId?: string;
-  timestamp: string;
-  activityType: string;
-  owner: string;
-  fromValue: string;
-  toValue: string;
-  notes: string;
-}
-
-export interface LegendItem {
-  listName: string;
-  value: string;
-  displayOrder: number;
-  color: string;
-  isDefault: boolean;
-  isActive: boolean;
-  probability?: number;
-}
-
-export interface StageRule {
-  flowType?: string; 
-  fromStage: string;
-  toStage: string;
-  trigger: string;
-  autoSetField: string;
-  autoSetValue: string;
-  requiresField: string[];
-}
-
-export interface SLARule {
-  ruleName: string;
-  stage: string;
-  channel?: string; 
-  condition: string;
-  thresholdHours: number;
-  alertLevel: string;
-  alertAction: string;
-}
-
-export interface AutoActionRule {
-  triggerStage: string;
-  triggerEvent: 'on_enter' | 'on_no_response';
-  defaultNextAction: string;
-  defaultDays: number;
-  channel?: string;
-}
-
-export interface MessageTemplate {
-  id: string;
-  stage: string;
-  category: string;
-  name: string; 
-  subject: string;
-  body: string;
-  infoLevel: string;
-}
-
-export interface ConfigStore {
-  legends: Record<string, LegendItem[]>;
-  stageRules: StageRule[];
-  slaRules: SLARule[];
-  autoActions: AutoActionRule[];
-  templates: MessageTemplate[];
-}
-
-// --- INTAKE ENGINE TYPES ---
-
 export interface SourceConfig {
-  layer: string;        // Col 0: Layer
-  sheetId: string;      // Col 1: Sheet ID
-  tab: string;          // Col 2: Tab
-  type: string;         // Col 3: Type
-  tags: string[];       // Col 4: Tags
-  isActive: boolean;    // Col 5: Active Status (TRUE/FALSE)
+  layer: string;        // Col 0: Layer Name
+  sheetId: string;      // Col 1: Spreadsheet ID
+  tab: string;          // Col 2: Tab Name
+  type: string;         // Col 3: Type (Vendor, Chat, etc.)
+  tags: string[];       // Col 4: Tags (comma separated)
+  isActive: boolean;    // Col 5: Active Status
+  _rowIndex?: number;   // Row number in config sheet
 }
 
 export interface FieldMapRule {
   id: string;
-  sourceLayer: string;  // Col 1: source_layer
-  sourceHeader: string; // Col 2: source_header
-  intakeField: string;  // Col 3: intake_field
-  transform: string;    // Col 4: transform
-  isRequired: boolean;  // Col 5: is_required
-  notes: string;
-  fallbackGroup?: string;
+  sourceLayer: string;  // Col 1: Source Layer Name
+  sourceHeader: string; // Col 2: Header in Source Sheet
+  intakeField: string;  // Col 3: Destination Field in CRM
+  transform: string;    // Col 4: Transform function name
+  isRequired: boolean;  // Col 5: Is Required?
+  fallbackGroup?: string; // Col 6: Fallback Group
+  targetTable: 'Leads' | 'LEAD_FLOWS' | 'BOTH'; // Col 7: Target Table
+  notes: string;        // Col 8: Notes
 }
 
 export interface IntakeRow {
@@ -180,13 +28,13 @@ export interface IntakeRow {
   sourceTab: string; 
   sourceRowIndex: number;
   
-  // Write-back metadata indices (to write "Imported" status back to source)
+  // Write-back metadata indices
   wbColIndex_Id: number;
   wbColIndex_Status: number;
   wbColIndex_ProcessedAt: number;
   wbColIndex_ProcessedBy: number;
   
-  // Mapped CRM Fields (Result of transformation)
+  // Mapped CRM Fields
   companyName: string;
   contactPerson: string;
   number: string;
@@ -201,7 +49,7 @@ export interface IntakeRow {
   tags: string; 
   info: string; 
   
-  // Flow Fields
+  // Flow Fields (Defaults/Computed)
   channel: string;
   owner: string;
   status: string; 
@@ -225,13 +73,12 @@ export interface IntakeRow {
   integrationReady: string;
   nextActionDate: string;
   
-  // Raw Source Data (for reference)
+  // Raw Data & Validation
   rawData: Record<string, any>;
-  
-  // Validation
   isValid: boolean;
   errors: string[];
-  importStatus: 'Pending' | 'Imported' | 'Error';
+  importStatus: 'Pending' | 'Imported' | 'Error' | 'Ignored';
+  isDuplicate?: boolean;
 }
 
 export interface GoogleUser {
@@ -468,3 +315,152 @@ export const calcSLAHealth = (lead: Lead, rules: SLARule[] = []): string => {
     if (health.status === 'Warning') return '🟡';
     return '🟢';
 };
+
+export interface Lead {
+  _rowIndex: number;
+  // --- TABLE 1: LEADS (Identity) ---
+  leadId: string;        // lead_id (Col 0)
+  contactPerson: string; // name (Col 1)
+  number: string;        // phone (Col 2)
+  email: string;         // email (Col 3)
+  companyName: string;   // company (Col 4)
+  city: string;          // city (Col 5)
+  source: string;        // source_refs (Col 6)
+  // category (Col 7)
+  createdBy: string;     // created_by (Col 8)
+  tags: string;          // tags (Col 9)
+  identityStatus: string; // Status (Col 10)
+  createdAt: string;     // created_at (Col 11)
+  leadScore: string;     // lead_score (Col 12)
+  remarks: string;       // note/description (Col 13)
+  sourceRowId: string;   // source_row_id (Col 14)
+  info: string;          // Info (Col 15)
+
+  // --- TABLE 2: LEAD_FLOWS (Operational) ---
+  flowId: string;        // flow_id (Col 0)
+  originalChannel: string; // original_channel (Col 2)
+  channel: string;       // channel (Col 3)
+  owner: string;         // owner (Col 4)
+  ydsPoc: string;        // Alias for owner
+  status: string;        // status (Col 5)
+  stage: string;         // stage (Col 6)
+  sourceFlowTag: string; // source_flow_tag (Col 7)
+  updatedAt: string;     // updated_at (Col 9)
+  startDate: string;     // start_date (Col 10)
+  expectedCloseDate: string; // expected_close_date (Col 11)
+  wonDate: string;       // won_date (Col 12)
+  lostDate: string;      // lost_date (Col 13)
+  lostReason: string;    // lost_reason (Col 14)
+  notes: string;         // notes (Col 15)
+  estimatedQty: number;  // estimated_qty (Col 16)
+  productType: string;   // product_type (Col 17)
+  printType: string;     // print_type (Col 18)
+  priority: string;      // priority (Col 19)
+  contactStatus: string; // contact_status (Col 20)
+  paymentUpdate: string; // payment_update (Col 21)
+  nextAction: string;    // next_action_type (Col 22)
+  nextActionDate: string;// next_action_date (Col 23)
+  intent: string;        // intent (Col 24)
+  category: string;      // category (Col 25)
+  customerType: string;  // customer_type (Col 26)
+
+  // --- UI / Computed Helpers ---
+  date: string;          
+  orderInfo: string;     
+  contactAttempts: number; 
+  lastContactDate: string; 
+  lastAttemptDate: string; 
+  
+  // Metrics
+  slaStatus: string;       
+  slaHealth: string;       
+  daysOpen: string;        
+  actionOverdue: string;   
+  firstResponseTime: string; 
+  stageChangedDate: string;  
+  
+  // Dropshipping Specifics
+  platformType: string;      
+  integrationReady: string;  
+  storeUrl: string;          
+  accountCreated: string;    
+  dashboardLinkSent: string; 
+  onboardingStartedDate: string; 
+  activationDate: string;    
+  
+  // Workflow Specifics
+  sampleRequired: string;    
+  sampleStatus: string;      
+  workflowType: string;      
+  designsReady: string;      
+  firstProductCreated: string; 
+  whatsappMessage: string;
+}
+
+export interface ActivityLog {
+  logId: string;
+  leadId: string;
+  flowId?: string;
+  timestamp: string;
+  activityType: string;
+  owner: string;
+  fromValue: string;
+  toValue: string;
+  notes: string;
+}
+
+export interface LegendItem {
+  listName: string;
+  value: string;
+  displayOrder: number;
+  color: string;
+  isDefault: boolean;
+  isActive: boolean;
+  probability?: number;
+}
+
+export interface StageRule {
+  flowType?: string; 
+  fromStage: string;
+  toStage: string;
+  trigger: string;
+  autoSetField: string;
+  autoSetValue: string;
+  requiresField: string[];
+}
+
+export interface SLARule {
+  ruleName: string;
+  stage: string;
+  channel?: string; 
+  condition: string;
+  thresholdHours: number;
+  alertLevel: string;
+  alertAction: string;
+}
+
+export interface AutoActionRule {
+  triggerStage: string;
+  triggerEvent: 'on_enter' | 'on_no_response';
+  defaultNextAction: string;
+  defaultDays: number;
+  channel?: string;
+}
+
+export interface MessageTemplate {
+  id: string;
+  stage: string;
+  category: string;
+  name: string; 
+  subject: string;
+  body: string;
+  infoLevel: string;
+}
+
+export interface ConfigStore {
+  legends: Record<string, LegendItem[]>;
+  stageRules: StageRule[];
+  slaRules: SLARule[];
+  autoActions: AutoActionRule[];
+  templates: MessageTemplate[];
+}

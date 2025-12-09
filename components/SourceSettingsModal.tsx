@@ -84,6 +84,7 @@ export const SourceSettingsModal: React.FC<SourceSettingsModalProps> = ({ isOpen
             intakeField: field,
             transform: '',
             isRequired: field === 'companyName',
+            targetTable: 'Leads',
             notes: ''
         }));
 

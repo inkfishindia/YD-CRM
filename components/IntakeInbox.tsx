@@ -6,10 +6,11 @@ import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { SourceSettingsModal } from './SourceSettingsModal';
 import { AddSourceModal } from './AddSourceModal';
+import { IntakeManagerModal } from './IntakeManagerModal';
 import { 
     AlertTriangle, RefreshCw, UploadCloud, Save, Trash2, CheckCircle2, 
     ChevronDown, ChevronUp, Mail, Phone, Lock, Filter, LayoutGrid, 
-    Table as TableIcon, XCircle, FileSpreadsheet, Play, Plus, Settings, Loader2, BookOpen, Columns, UserPlus, ArrowRight, AlertOctagon, Database
+    Table as TableIcon, XCircle, FileSpreadsheet, Play, Plus, Settings, Loader2, BookOpen, Columns, UserPlus, ArrowRight, AlertOctagon, Database, Edit2, Sliders
 } from 'lucide-react';
 
 interface IntakeInboxProps {
@@ -395,9 +396,9 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
     const [configSources, setConfigSources] = useState<SourceConfig[]>([]);
     const [configMaps, setConfigMaps] = useState<FieldMapRule[]>([]);
     
-    // Replace simple mapping editor with powerful SourceSettingsModal
     const [showSourceSettings, setShowSourceSettings] = useState<SourceConfig | null>(null);
     const [showAddSource, setShowAddSource] = useState(false);
+    const [showManager, setShowManager] = useState(false); // NEW: Config Manager
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -458,6 +459,14 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
         return sourceRows;
     }, [sourceRows, activeTab, duplicatesMap]);
 
+    // Check if we have unmapped rows (rows exist but names/companies are consistently empty)
+    const isMappingIssue = useMemo(() => {
+        if (sourceRows.length === 0) return false;
+        const emptyIdentities = sourceRows.filter(r => !r.companyName && !r.contactPerson).length;
+        // If > 90% of rows have no identity, it's likely a mapping issue
+        return emptyIdentities > sourceRows.length * 0.9;
+    }, [sourceRows]);
+
     // Derived State: Counts
     const counts = useMemo(() => ({
         ready: sourceRows.filter(r => r.isValid && !duplicatesMap[r.id]).length,
@@ -503,7 +512,6 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
             const res = await IntakeService.pushToCRM([row]);
             if (res.successCount > 0) {
                 success++;
-                // Update local state incrementally to reflect progress in UI
                 setRows(prev => prev.filter(r => r.id !== row.id)); 
             } else {
                 failedErrors.push(...res.errors);
@@ -511,8 +519,6 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
         }
 
         setImportProgress(null);
-        
-        // Update stats
         setStats(prev => prev.map(s => s.name === activeSource ? { ...s, count: Math.max(0, s.count - success) } : s));
         setSelectedIds(new Set());
         onImportSuccess();
@@ -572,6 +578,11 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
         else setSelectedIds(new Set(filteredRows.map(r => r.id)));
     };
 
+    const openMappingEditor = () => {
+        const src = configSources.find(s => s.layer === activeSource);
+        if(src) setShowSourceSettings(src);
+    };
+
     return (
         <div className="flex flex-col h-full bg-[#f5f5f5] animate-fade-in relative overflow-hidden">
             
@@ -593,8 +604,14 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
                             <Button size="sm" variant="ghost" onClick={onLogin} className="h-6 px-2 text-[10px]">Login</Button>
                         </div>
                     )}
+                    
+                    {/* NEW: Manage Sources Button */}
+                    <Button variant="outline" size="sm" onClick={() => setShowManager(true)} icon={<Sliders size={14}/>}>
+                        Manage Sources
+                    </Button>
+
                     <Button variant="secondary" onClick={scanSources} isLoading={loading} icon={<RefreshCw size={14} />}>
-                        Scan Sources
+                        Scan
                     </Button>
                 </div>
             </div>
@@ -689,6 +706,22 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
                                     <button onClick={() => setViewMode('source')} className={`px-2 py-1 rounded ${viewMode === 'source' ? 'bg-gray-100 text-gray-800 font-bold' : 'text-gray-400'}`} title="Source View"><Columns size={14}/></button>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* MAPPING WARNING */}
+                    {isMappingIssue && (
+                        <div className="bg-amber-50 px-6 py-3 border-b border-amber-200 flex justify-between items-center animate-fade-in-up">
+                            <div className="flex items-center gap-3">
+                                <AlertTriangle size={20} className="text-amber-600" />
+                                <div>
+                                    <h4 className="text-sm font-bold text-amber-800">Fields not mapped correctly?</h4>
+                                    <p className="text-xs text-amber-700">Rows are loaded but crucial data (Company, Name) seems missing.</p>
+                                </div>
+                            </div>
+                            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white border-transparent" onClick={openMappingEditor} icon={<Edit2 size={14}/>}>
+                                Fix Mapping
+                            </Button>
                         </div>
                     )}
 
@@ -813,6 +846,13 @@ export const IntakeInbox: React.FC<IntakeInboxProps> = ({ user, onImportSuccess,
                 onClose={() => setShowAddSource(false)}
                 onSuccess={(newSource) => { scanSources(); setShowSourceSettings(newSource); }}
             />
+            {showManager && (
+                <IntakeManagerModal 
+                    isOpen={showManager}
+                    onClose={() => setShowManager(false)}
+                    onSourceUpdated={scanSources}
+                />
+            )}
         </div>
     );
 };

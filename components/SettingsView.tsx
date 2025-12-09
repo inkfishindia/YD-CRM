@@ -53,30 +53,86 @@ const AppGuide: React.FC = () => (
     </div>
 );
 
-const SchemaSettings: React.FC = () => (
-    <div className="space-y-6 animate-fade-in">
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h3 className="font-bold text-gray-800">Identity Schema (Leads)</h3>
+const SchemaTable = ({ title, csv, mapping }: { title: string, csv: string, mapping: Record<number, string> }) => {
+    const headers = csv.split(',');
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <Database size={16} className="text-blue-600"/> {title}
+                </h3>
+                <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded font-mono">{headers.length} Columns</span>
             </div>
-            <div className="p-6 overflow-x-auto">
-                <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto">
-                    {HEADER_IDENTITY_CSV}
-                </pre>
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-100 text-gray-500 font-bold border-b border-gray-200 text-xs uppercase">
+                        <tr>
+                            <th className="px-6 py-3 w-16 text-center">#</th>
+                            <th className="px-6 py-3">Sheet Header</th>
+                            <th className="px-6 py-3">System Field</th>
+                            <th className="px-6 py-3">Type/Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {headers.map((h, i) => (
+                            <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-2 text-center font-mono text-gray-400 text-xs">{i}</td>
+                                <td className="px-6 py-2 font-bold text-gray-800">{h}</td>
+                                <td className="px-6 py-2 font-mono text-blue-600 text-xs">{mapping[i] || '-'}</td>
+                                <td className="px-6 py-2 text-xs text-gray-500 italic">
+                                    {i === 0 ? 'Primary Key' : ''}
+                                    {h.includes('date') || h.includes('at') ? 'Date (ISO)' : ''}
+                                    {h.includes('id') && i !== 0 ? 'Foreign Key' : ''}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h3 className="font-bold text-gray-800">Flow Schema (Lead_Flows)</h3>
+    );
+}
+
+const SchemaSettings: React.FC = () => {
+    const identityMapping: Record<number, string> = {
+        0: 'leadId', 1: 'contactPerson', 2: 'number', 3: 'email', 4: 'companyName',
+        5: 'city', 6: 'source', 7: 'category (fallback)', 8: 'createdBy', 9: 'tags',
+        10: 'identityStatus', 11: 'createdAt', 12: 'leadScore', 13: 'remarks', 14: 'sourceRowId', 15: 'info'
+    };
+
+    const flowMapping: Record<number, string> = {
+        0: 'flowId', 1: 'leadId (FK)', 2: 'originalChannel', 3: 'channel', 4: 'owner',
+        5: 'status', 6: 'stage', 7: 'sourceFlowTag', 8: 'createdAt', 9: 'updatedAt',
+        10: 'startDate', 11: 'expectedCloseDate', 12: 'wonDate', 13: 'lostDate', 14: 'lostReason',
+        15: 'notes', 16: 'estimatedQty', 17: 'productType', 18: 'printType', 19: 'priority',
+        20: 'contactStatus', 21: 'paymentUpdate', 22: 'nextAction', 23: 'nextActionDate',
+        24: 'intent', 25: 'category (primary)', 26: 'customerType'
+    };
+
+    return (
+        <div className="space-y-8 animate-fade-in">
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800 flex items-start gap-3">
+                <Info size={20} className="shrink-0 mt-0.5" />
+                <div>
+                    <p className="font-bold">System Schema Confirmation</p>
+                    <p className="mt-1">The application is configured to use the following structure. Please ensure your Google Sheet columns match this order exactly.</p>
+                </div>
             </div>
-            <div className="p-6 overflow-x-auto">
-                <pre className="text-xs bg-gray-900 text-blue-400 p-4 rounded-lg overflow-x-auto">
-                    {HEADER_LEAD_FLOW_CSV}
-                </pre>
-            </div>
+            
+            <SchemaTable 
+                title="Identity Schema (Leads Sheet)" 
+                csv={HEADER_IDENTITY_CSV} 
+                mapping={identityMapping} 
+            />
+            
+            <SchemaTable 
+                title="Operational Schema (Lead_Flows Sheet)" 
+                csv={HEADER_LEAD_FLOW_CSV} 
+                mapping={flowMapping} 
+            />
         </div>
-    </div>
-);
+    );
+};
 
 const SheetInspector: React.FC<{ currentId: string }> = ({ currentId }) => {
     const [sheetName, setSheetName] = useState('Leads');
@@ -339,21 +395,6 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
         setLoadingState({ action: 'import', key: sourceKey });
         setImportResult(null);
         
-        // Use IntakeService for consistent parsing logic
-        const scanRes = await IntakeService.scanSources();
-        // Filter for specific source
-        const relevantRows = scanRes.rows.filter(r => r.sourceLayer === sourceKey);
-        
-        // Convert IntakeRow to Lead to match interface expected by imports view
-        // Note: fetchLeadsFromSource usually returns Lead[] directly, but using IntakeService gives IntakeRows.
-        // We will transform them or use the simpler fetchLeadsFromSource if it was updated.
-        // Let's use fetchLeadsFromSource which we updated in sheetService to be basic but functional.
-        // Or better, use IntakeService logic if we want robust field mapping.
-        
-        // Since we are inside SourceIntegrations which feeds into ImportsView (staging), 
-        // passing fully parsed leads is better.
-        
-        // Let's try the fetchLeadsFromSource wrapper we updated in sheetService.
         const res = await fetchLeadsFromSource(sourceKey as any);
         
         setLoadingState(null);

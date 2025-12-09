@@ -5,7 +5,7 @@ import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
 import { FileSpreadsheet, ExternalLink, Import, Stethoscope, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Save, Trash2, XCircle, Loader2, Play, CheckSquare, Square, Filter, User, Phone, Mail, MapPin, ShoppingBag, MessageSquare, Building2, UserPlus, Layers, Table, FileText, Plus } from 'lucide-react';
-import { SOURCE_CONFIG, fetchLeadsFromSource, fetchRemoteHeaders, fetchRemoteSheetNames, addLead, SourceConfigItem, fetchIntakeConfig } from '../services/sheetService';
+import { SOURCE_CONFIG, fetchLeadsFromSource, fetchRemoteHeaders, fetchRemoteSheetNames, addLead, fetchIntakeConfig } from '../services/sheetService';
 import { Lead, GoogleUser, SourceConfig, FieldMapRule } from '../types';
 
 interface FetchLeadsViewProps {
@@ -315,7 +315,7 @@ export const FetchLeadsView: React.FC<FetchLeadsViewProps> = ({ user, onSetImpor
     const handleScan = async () => {
         setLoading(true);
         const allLeads: Record<string, Lead[]> = {};
-        const sourcesToScan = sources.length > 0 ? sources : Object.entries(SOURCE_CONFIG).map(([k,v]) => ({ layer: k, sheetId: v.id, tab: v.sheetName, type: 'Vendor', tags: [] }));
+        const sourcesToScan = sources.length > 0 ? sources : Object.entries(SOURCE_CONFIG).map(([k,v]) => ({ layer: k, sheetId: v.id, tab: v.sheetName, type: 'Vendor', tags: [], isActive: true }));
 
         for (const src of sourcesToScan) {
              const res = await fetchLeadsFromSource(src.layer as any);
