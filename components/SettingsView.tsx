@@ -8,7 +8,7 @@ import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populat
 import { IntakeService } from '../services/intakeService';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
-import { MappingEditorModal } from './MappingEditorModal';
+import { SourceSettingsModal } from './SourceSettingsModal';
 
 // --- SUB-COMPONENTS ---
 
@@ -548,7 +548,7 @@ const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads
             )}
 
             {editorOpen.isOpen && (
-                <MappingEditorModal 
+                <SourceSettingsModal 
                     isOpen={editorOpen.isOpen} 
                     onClose={() => setEditorOpen({ isOpen: false, source: null })} 
                     source={editorOpen.source}
