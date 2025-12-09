@@ -1,90 +1,97 @@
 
-export interface SourceConfig {
-  layer: string;        // Col 0: Layer Name
-  sheetId: string;      // Col 1: Spreadsheet ID
-  tab: string;          // Col 2: Tab Name
-  type: string;         // Col 3: Type (Vendor, Chat, etc.)
-  tags: string[];       // Col 4: Tags (comma separated)
-  isActive: boolean;    // Col 5: Active Status
-  _rowIndex?: number;   // Row number in config sheet
-}
-
-export interface FieldMapRule {
-  id: string;
-  sourceLayer: string;  // Col 1: Source Layer Name
-  sourceHeader: string; // Col 2: Header in Source Sheet
-  intakeField: string;  // Col 3: Destination Field in CRM
-  transform: string;    // Col 4: Transform function name
-  isRequired: boolean;  // Col 5: Is Required?
-  fallbackGroup?: string; // Col 6: Fallback Group
-  targetTable: 'Leads' | 'LEAD_FLOWS' | 'BOTH'; // Col 7: Target Table
-  notes: string;        // Col 8: Notes
-}
-
-export interface IntakeRow {
-  id: string; 
-  sourceLayer: string;
-  sourceSheetId: string;
-  sourceTab: string; 
-  sourceRowIndex: number;
-  
-  // Write-back metadata indices
-  wbColIndex_Id: number;
-  wbColIndex_Status: number;
-  wbColIndex_ProcessedAt: number;
-  wbColIndex_ProcessedBy: number;
-  
-  // Mapped CRM Fields
-  companyName: string;
-  contactPerson: string;
-  number: string;
-  email: string;
-  city: string;
-  estimatedQty: number;
-  productType: string;
-  orderInfo: string;
-  source: string;
-  sourceRowId?: string; 
-  date: string;
-  tags: string; 
-  info: string; 
-  
-  // Flow Fields (Defaults/Computed)
-  channel: string;
-  owner: string;
-  status: string; 
-  stage: string;
-  startDate: string;
-  expectedCloseDate: string;
-  notes: string; 
-  printType: string;
-  priority: string;
-  contactStatus: string; 
-  paymentUpdate: string;
-  intent: string;
-  category: string;
-  customerType: string;
-  leadScore: string;
-  remarks: string; 
-  
-  // Dropshipping / Platform
-  storeUrl: string;
-  platformType: string;
-  integrationReady: string;
-  nextActionDate: string;
-  
-  // Raw Data & Validation
-  rawData: Record<string, any>;
-  isValid: boolean;
-  errors: string[];
-  importStatus: 'Pending' | 'Imported' | 'Error' | 'Ignored';
-  isDuplicate?: boolean;
-}
-
 export interface GoogleUser {
   name: string;
   email: string;
   picture: string;
+}
+
+export type Owner = string;
+
+// --- DYNAMIC MAPPING TYPES ---
+// Allows the app to adapt to column reordering in Sheets
+export interface ColumnMap {
+  [key: string]: number;
+}
+
+export interface Lead {
+  // Internal Metadata
+  _identityRowIndex?: number;
+  _flowRowIndex?: number;
+  
+  // --- IDENTITY (Leads Sheet) ---
+  leadId: string;
+  contactPerson: string;
+  number: string;
+  email: string;
+  companyName: string;
+  city: string;
+  source: string;
+  categoryIdentity?: string;
+  createdBy?: string;
+  tags: string;
+  identityStatus: string;
+  createdAt?: string;
+  leadScore?: string | number;
+  remarks: string;
+  sourceRowId?: string;
+  info?: string;
+
+  // --- FLOW (Lead_Flows Sheet) ---
+  flowId?: string;
+  originalChannel?: string;
+  channel?: string;
+  ydsPoc: string; // Owner
+  status: string; // Stage
+  stage: string;  // Redundant with status, keeping for schema compat
+  sourceFlowTag?: string;
+  updatedAt?: string;
+  startDate?: string;
+  expectedCloseDate?: string;
+  wonDate?: string;
+  lostDate?: string;
+  lostReason?: string;
+  orderInfo: string;
+  estimatedQty: number;
+  productType: string;
+  printType: string;
+  priority: string;
+  contactStatus: string;
+  paymentUpdate: string;
+  nextAction: string;
+  nextActionDate: string;
+  intent?: string;
+  category: string; // Primary
+  customerType?: string;
+
+  // --- UI / COMPUTED FIELDS ---
+  date: string; // Display Date
+  owner?: string; // UI Alias
+  daysOpen?: string;
+  slaStatus?: string;
+  slaHealth?: string;
+  actionOverdue?: string;
+  stageChangedDate?: string;
+  
+  // Context Fields (Dropship / B2B)
+  platformType?: string;
+  storeUrl?: string;
+  integrationReady?: string;
+  sampleRequired?: string;
+  sampleStatus?: string;
+  workflowType?: string;
+  onboardingStartedDate?: string;
+  dashboardLinkSent?: string;
+  accountCreated?: string;
+  firstProductCreated?: string;
+  activationDate?: string;
+  
+  // Operational
+  lastContactDate?: string;
+  contactAttempts?: number;
+  lastAttemptDate?: string;
+  firstResponseTime?: string;
+  
+  [key: string]: any; // Allow loose access for dynamic mappers
 }
 
 export interface AppOptions {
@@ -97,16 +104,22 @@ export interface AppOptions {
   printTypes: string[];
   contactStatus: string[];
   paymentStatus: string[];
-  designStatus: string[];
   lostReasons: string[];
   customerTypes: string[];
   platformTypes: string[];
   sampleStatus: string[];
-  orderStatus: string[];
+  intents: string[];
+  workflowTypes: string[];
   nextActionTypes: string[];
-  intents: string[]; 
-  workflowTypes: string[]; 
+  orderStatus: string[];
+  designStatus: string[];
 }
+
+export interface StageRule { fromStage: string; toStage: string; requiresField: string[]; }
+export interface SLARule { stage: string; thresholdHours: number; alertLevel: string; }
+export interface AutoActionRule { triggerStage: string; defaultNextAction: string; defaultDays: number; triggerEvent?: string; }
+export interface MessageTemplate { id: string; name: string; body: string; stage?: string; category?: string; }
+export interface LegendItem { listName: string; value: string; color: string; isActive: boolean; displayOrder: number; probability?: number; }
 
 // --- CONSTANTS ---
 
@@ -117,31 +130,7 @@ export const MODULE_IDS = {
 };
 
 export const SHEET_IDS = {
-  MAIN: MODULE_IDS.CORE, 
-  TKW: '1sImoVXLvVlv3_LONrDZLm-auzZPJsAE1NmAbxgz3MHU',
-  DS: '1kJa4O-yMvcmueR2rQEK8Vze12-bf5o0t3ketLReLMx0',
-  AUTO: '1UVP93fwaqxjX3TW3P6i0Uax4XeSUr2I1YZQgsJFBzm0',
-  PARTNERS: '1U7R6KHyHoreKNdtzWHJFDyL6dRMZkbj-gyjL71LGJL8'
-};
-
-export type Owner = string;
-export type Stage = string;
-
-export const AUTO_NEXT_ACTIONS_DEFAULT: Record<string, { action: string, days: number }> = {
-  'New': { action: 'Assign Owner', days: 0 },
-  'Assigned': { action: 'First Call Attempt', days: 1 },
-  'Won': { action: 'Confirm Payment', days: 0 }
-};
-
-export const REQUIRED_FIELDS_BY_STAGE: Record<string, string[]> = {
-  'Assigned': ['ydsPoc', 'priority'],
-  'Qualified': ['intent', 'category'],
-  'Won': ['paymentUpdate']
-};
-
-export const FORBIDDEN_TRANSITIONS: Record<string, string[]> = {
-  'New': ['Won'],
-  'Won': ['New']
+  DEFAULT: MODULE_IDS.CORE, 
 };
 
 // --- HELPERS ---
@@ -153,6 +142,14 @@ export const calculatePriority = (qty: number): string => {
   return '⚪';
 };
 
+export const getStageColor = (stage: string) => {
+  const s = (stage || '').toLowerCase();
+  if (s === 'won') return 'bg-green-50 text-green-700 border-green-200';
+  if (s === 'lost') return 'bg-red-50 text-red-700 border-red-200';
+  if (s.includes('new') || s.includes('assigned')) return 'bg-blue-50 text-blue-700 border-blue-200';
+  return 'bg-gray-50 text-gray-600 border-gray-200';
+};
+
 export const getPriorityColor = (priority: string) => {
   if (priority?.includes('High')) return 'bg-red-100 text-red-800 border-red-200';
   if (priority?.includes('Med')) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
@@ -160,22 +157,11 @@ export const getPriorityColor = (priority: string) => {
   return 'bg-gray-100 text-gray-600 border-gray-200';
 };
 
-export const getStageColor = (stage: string) => {
-  const s = stage?.toLowerCase() || '';
-  if (s === 'won') return 'bg-green-50 text-green-700 border-green-200';
-  if (s === 'lost') return 'bg-red-50 text-red-700 border-red-200';
-  if (s.includes('ready')) return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-  if (s === 'negotiation') return 'bg-purple-50 text-purple-700 border-purple-200';
-  if (s === 'qualified') return 'bg-blue-50 text-blue-700 border-blue-200';
-  return 'bg-gray-50 text-gray-600 border-gray-200';
-};
-
-// DATE HELPERS
 export const formatDate = (date: Date = new Date()): string => {
-  const dd = String(date.getDate()).padStart(2, '0');
+  const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const yy = String(date.getFullYear()).slice(-2);
-  return `${dd}/${mm}/${yy}`; 
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 export const addDaysToDate = (days: number): string => {
@@ -186,279 +172,83 @@ export const addDaysToDate = (days: number): string => {
 
 export const parseDate = (dateStr: string) => {
     if (!dateStr) return null;
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        const parts = dateStr.split('-');
-        return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    // Handle both YYYY-MM-DD and DD/MM/YYYY
+    if (dateStr.includes('/')) {
+        const [d, m, y] = dateStr.split('/');
+        return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
     }
-    const cleanStr = dateStr.replace(/-/g, '/');
-    const parts = cleanStr.split('/');
+    const parts = dateStr.split('-');
     if (parts.length !== 3) return null;
-    let year = parseInt(parts[2]);
-    if (year < 100) year += 2000;
-    return new Date(year, parseInt(parts[1]) - 1, parseInt(parts[0]));
+    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
 };
 
-export const toSheetDate = (appDate: string): string => {
-    if (!appDate) return '';
-    const date = parseDate(appDate);
-    if (!date) return appDate;
-    const dd = String(date.getDate()).padStart(2, '0');
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const yyyy = date.getFullYear();
-    return `${mm}/${dd}/${yyyy}`;
+export const toInputDate = (dateStr: string | undefined): string => dateStr || '';
+export const fromInputDate = (inputDate: string): string => inputDate;
+
+// --- DEFAULTS ---
+
+export const AUTO_NEXT_ACTIONS_DEFAULT: Record<string, { action: string, days: number }> = {
+  'New': { action: 'Assign Owner', days: 0 },
+  'Assigned': { action: 'First Call Attempt', days: 1 },
+  'Contacted': { action: 'Qualify Requirement', days: 2 },
+  'Qualified': { action: 'Send Proposal', days: 1 },
+  'Won': { action: 'Confirm Payment', days: 0 }
 };
 
-export const fromSheetDate = (sheetDate: string): string => {
-    if (!sheetDate) return '';
-    if (sheetDate.match(/^\d{4}-\d{2}-\d{2}/)) return formatDate(new Date(sheetDate));
-    const parts = sheetDate.split(/[-/]/);
-    if (parts.length < 3) return sheetDate;
-    const m = parseInt(parts[0]);
-    const d = parseInt(parts[1]);
-    const y = parseInt(parts[2]);
-    if (isNaN(m) || isNaN(d) || isNaN(y)) return sheetDate;
-    const date = new Date(y, m - 1, d);
-    return formatDate(date); 
+export const REQUIRED_FIELDS_BY_STAGE: Record<string, string[]> = {
+  'Assigned': ['ydsPoc', 'priority'],
+  'Qualified': ['category', 'intent'],
+  'Won': ['paymentUpdate']
 };
 
-export const toInputDate = (appDate: string | undefined): string => {
-    if (!appDate) return '';
-    const date = parseDate(appDate);
-    if (!date) return '';
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-};
-
-export const fromInputDate = (inputDate: string): string => {
-    if (!inputDate) return '';
-    const parts = inputDate.split('-');
-    if (parts.length !== 3) return '';
-    const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    return formatDate(date);
-};
+export const FORBIDDEN_TRANSITIONS: Record<string, string[]> = {};
 
 // --- SLA LOGIC ---
+
 export const determineLeadHealth = (lead: Lead, rules: SLARule[] = []) => {
     if (lead.status === 'Won' || lead.status === 'Lost') {
-        return { status: 'Healthy', label: lead.status === 'Won' ? 'Won' : 'Closed', urgency: 'okay', color: 'gray', isOverdue: false };
+        return { status: 'Healthy', label: 'Closed', urgency: 'okay', color: 'gray', isOverdue: false };
     }
 
-    const today = new Date(); today.setHours(0,0,0,0);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const today = new Date();
+    today.setHours(0,0,0,0);
     
-    let actionStatus = 'Healthy';
-    let isActionOverdue = false;
-    
+    // 1. Check Explicit Due Date
     if (lead.nextActionDate) {
         const nextDate = parseDate(lead.nextActionDate);
-        if (nextDate) {
-            if (nextDate < today) {
-                actionStatus = 'Violated';
-                isActionOverdue = true;
-            } else if (nextDate.getTime() === today.getTime() || nextDate.getTime() === tomorrow.getTime()) {
-                actionStatus = 'Warning';
+        if (nextDate && nextDate < today) {
+            return { status: 'Violated', label: 'Overdue', urgency: 'critical', color: 'red', isOverdue: true };
+        }
+        if (nextDate && nextDate.getTime() === today.getTime()) {
+             return { status: 'Warning', label: 'Due Today', urgency: 'warning', color: 'yellow', isOverdue: false };
+        }
+    }
+
+    // 2. Check Stage Stagnation (Optional Rule Based)
+    if (rules.length > 0) {
+        const rule = rules.find(r => r.stage === lead.status);
+        if (rule) {
+            const lastChange = parseDate(lead.stageChangedDate) || parseDate(lead.date);
+            if (lastChange) {
+                const hoursInStage = (new Date().getTime() - lastChange.getTime()) / (1000 * 60 * 60);
+                if (hoursInStage > rule.thresholdHours) {
+                     return { status: 'Violated', label: 'Stagnant', urgency: 'critical', color: 'red', isOverdue: true };
+                }
             }
         }
-    }
-
-    let stageStatus = 'Healthy';
-    let ruleBreach = false;
-    
-    const rule = rules.find(r => r.stage.toLowerCase() === (lead.status || '').toLowerCase());
-    
-    if (rule) {
-        const stageDate = parseDate(lead.stageChangedDate) || parseDate(lead.date) || today;
-        const diffTime = Math.abs(today.getTime() - stageDate.getTime());
-        const hoursInStage = diffTime / (1000 * 60 * 60);
-        
-        if (hoursInStage > rule.thresholdHours) {
-            stageStatus = 'Violated';
-            ruleBreach = true;
-        } else if (hoursInStage > rule.thresholdHours * 0.8) {
-             stageStatus = 'Warning';
-        }
-    }
-
-    if (actionStatus === 'Violated' || stageStatus === 'Violated') {
-        return { 
-            status: 'Violated', 
-            label: isActionOverdue ? 'Overdue' : 'SLA Breach', 
-            urgency: 'critical', 
-            color: 'red',
-            isOverdue: isActionOverdue || ruleBreach
-        };
-    }
-    
-    if (actionStatus === 'Warning' || stageStatus === 'Warning') {
-         return { 
-            status: 'Warning', 
-            label: actionStatus === 'Warning' ? 'Due Soon' : 'Aging', 
-            urgency: 'warning', 
-            color: 'yellow',
-            isOverdue: false
-        };
-    }
-
-    if (lead.nextAction && !isActionOverdue) {
-        return { status: 'Healthy', label: 'Scheduled', urgency: 'scheduled', color: 'blue', isOverdue: false };
     }
 
     return { status: 'Healthy', label: 'OK', urgency: 'okay', color: 'green', isOverdue: false };
 };
 
-export const calcSLAHealth = (lead: Lead, rules: SLARule[] = []): string => {
-    const health = determineLeadHealth(lead, rules);
-    if (health.status === 'Violated') return '🔴';
-    if (health.status === 'Warning') return '🟡';
-    return '🟢';
-};
-
-export interface Lead {
-  _rowIndex: number;       // Row index in LEAD_FLOWS sheet
-  _identityRowIndex: number; // Row index in Leads sheet
-  // --- TABLE 1: LEADS (Identity) ---
-  leadId: string;        // lead_id (Col 0)
-  contactPerson: string; // name (Col 1)
-  number: string;        // phone (Col 2)
-  email: string;         // email (Col 3)
-  companyName: string;   // company (Col 4)
-  city: string;          // city (Col 5)
-  source: string;        // source_refs (Col 6)
-  // category (Col 7 - Fallback)
-  createdBy: string;     // created_by (Col 8)
-  tags: string;          // tags (Col 9)
-  identityStatus: string; // Status (Col 10)
-  createdAt: string;     // created_at (Col 11)
-  leadScore: string;     // lead_score (Col 12)
-  remarks: string;       // note/description (Col 13)
-  sourceRowId: string;   // source_row_id (Col 14)
-  info: string;          // Info (Col 15)
-
-  // --- TABLE 2: LEAD_FLOWS (Operational) ---
-  flowId: string;        // flow_id (Col 0)
-  originalChannel: string; // original_channel (Col 2)
-  channel: string;       // channel (Col 3)
-  owner: string;         // owner (Col 4)
-  ydsPoc: string;        // Alias for owner
-  status: string;        // status (Col 5)
-  stage: string;         // stage (Col 6)
-  sourceFlowTag: string; // source_flow_tag (Col 7)
-  updatedAt: string;     // updated_at (Col 9)
-  startDate: string;     // start_date (Col 10)
-  expectedCloseDate: string; // expected_close_date (Col 11)
-  wonDate: string;       // won_date (Col 12)
-  lostDate: string;      // lost_date (Col 13)
-  lostReason: string;    // lost_reason (Col 14)
-  notes: string;         // notes (Col 15)
-  estimatedQty: number;  // estimated_qty (Col 16)
-  productType: string;   // product_type (Col 17)
-  printType: string;     // print_type (Col 18)
-  priority: string;      // priority (Col 19)
-  contactStatus: string; // contact_status (Col 20)
-  paymentUpdate: string; // payment_update (Col 21)
-  nextAction: string;    // next_action_type (Col 22)
-  nextActionDate: string;// next_action_date (Col 23)
-  intent: string;        // intent (Col 24)
-  category: string;      // category (Col 25)
-  customerType: string;  // customer_type (Col 26)
-
-  // --- UI / Computed Helpers ---
-  date: string;          
-  orderInfo: string;     
-  contactAttempts: number; 
-  lastContactDate: string; 
-  lastAttemptDate: string; 
-  
-  // Metrics
-  slaStatus: string;       
-  slaHealth: string;       
-  daysOpen: string;        
-  actionOverdue: string;   
-  firstResponseTime: string; 
-  stageChangedDate: string;  
-  
-  // Dropshipping Specifics
-  platformType: string;      
-  integrationReady: string;  
-  storeUrl: string;          
-  accountCreated: string;    
-  dashboardLinkSent: string; 
-  onboardingStartedDate: string; 
-  activationDate: string;    
-  
-  // Workflow Specifics
-  sampleRequired: string;    
-  sampleStatus: string;      
-  workflowType: string;      
-  designsReady: string;      
-  firstProductCreated: string; 
-  whatsappMessage: string;
-}
-
-export interface ActivityLog {
-  logId: string;
-  leadId: string;
-  flowId?: string;
-  timestamp: string;
-  activityType: string;
-  owner: string;
-  fromValue: string;
-  toValue: string;
-  notes: string;
-}
-
-export interface LegendItem {
-  listName: string;
-  value: string;
-  displayOrder: number;
-  color: string;
-  isDefault: boolean;
-  isActive: boolean;
-  probability?: number;
-}
-
-export interface StageRule {
-  flowType?: string; 
-  fromStage: string;
-  toStage: string;
-  trigger: string;
-  autoSetField: string;
-  autoSetValue: string;
-  requiresField: string[];
-}
-
-export interface SLARule {
-  ruleName: string;
-  stage: string;
-  channel?: string; 
-  condition: string;
-  thresholdHours: number;
-  alertLevel: string;
-  alertAction: string;
-}
-
-export interface AutoActionRule {
-  triggerStage: string;
-  triggerEvent: 'on_enter' | 'on_no_response';
-  defaultNextAction: string;
-  defaultDays: number;
-  channel?: string;
-}
-
-export interface MessageTemplate {
-  id: string;
-  stage: string;
-  category: string;
-  name: string; 
-  subject: string;
-  body: string;
-  infoLevel: string;
-}
+// Legacy Interface Stubs for compatibility
+export interface ActivityLog { logId: string; leadId: string; timestamp: string; activityType: string; owner: string; notes: string; fromValue?: string; toValue?: string; }
+export interface SourceConfig { layer: string; sheetId: string; tab: string; type: string; tags: string[]; isActive: boolean; _rowIndex?: number; headers?: string[]; name?: string; }
+export interface FieldMapRule { id?: string; sourceLayer: string; sourceHeader: string; intakeField: string; transform: string; isRequired: boolean; fallbackGroup?: string; targetTable?: string; notes?: string; }
+export interface IntakeRow { id: string; sourceLayer: string; sourceSheetId: string; sourceTab: string; sourceRowIndex: number; wbColIndex_Id?: number; wbColIndex_Status?: number; rawData: Record<string, any>; isValid: boolean; isDuplicate: boolean; errors: string[]; [key: string]: any; }
 
 export interface ConfigStore {
-  legends: Record<string, LegendItem[]>;
+  appOptions: AppOptions;
   stageRules: StageRule[];
   slaRules: SLARule[];
   autoActions: AutoActionRule[];

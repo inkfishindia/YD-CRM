@@ -4,11 +4,10 @@ import { LegendItem, StageRule, SLARule, AutoActionRule, MessageTemplate, Google
 import { Button } from './ui/Button';
 import { Input, Select, Textarea } from './ui/Form';
 import { Edit2, Plus, CheckCircle, Trash2, Copy, AlertTriangle, Link, Save, RotateCcw, Cloud, Database, CloudOff, LogIn, Hammer, Loader2, MinusCircle, Table, BookOpen, Info, List, Stethoscope, Wrench, Shield, Zap, LayoutTemplate, Activity, UploadCloud, Tag, GitMerge, ArrowDown, Ban, CheckSquare, Clock, ArrowRight, Users, History, MessageCircle, FileSpreadsheet, Box, Network, ExternalLink, RefreshCw, Import, FileText, Columns, Compass, CheckCircle2, XCircle, Layout, Sun, FileSearch, RefreshCcw, Check, Square, Play, Terminal, Layers } from 'lucide-react';
-import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populateConfigData, fetchRemoteHeaders, SHEET_NAME_LEADS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY, SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES, HEADER_LEAD_CSV, HEADER_LEGEND_CSV, HEADER_ACTIVITY_CSV, HEADER_STAGE_RULES_CSV, HEADER_SLA_RULES_CSV, HEADER_AUTO_ACTION_CSV, HEADER_TEMPLATES_CSV, SOURCE_CONFIG, SHEET_NAME_IDENTITY, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_DROPSHIP_FLOWS, SHEET_NAME_STORES, SHEET_NAME_ACCOUNT_MAP, SHEET_NAME_FLOW_HISTORY, HEADER_IDENTITY_CSV, HEADER_LEAD_FLOW_CSV, HEADER_DROPSHIP_FLOW_CSV, HEADER_STORE_CSV, HEADER_ACCOUNT_MAP_CSV, HEADER_FLOW_HISTORY_CSV, analyzeSheetColumns, ColumnMetadata, fetchRemoteSheetNames, SYSTEM_SHEET_NAMES, getSpreadsheetId } from '../services/sheetService';
+import { initializeSheetStructure, diagnoseSheetStructure, SchemaReport, populateConfigData, fetchRemoteHeaders, SHEET_NAME_LEADS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY, SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES, HEADER_LEAD_CSV, HEADER_LEGEND_CSV, HEADER_ACTIVITY_CSV, HEADER_STAGE_RULES_CSV, HEADER_SLA_RULES_CSV, HEADER_AUTO_ACTION_CSV, HEADER_TEMPLATES_CSV, SOURCE_CONFIG, SHEET_NAME_IDENTITY, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_DROPSHIP_FLOWS, SHEET_NAME_STORES, SHEET_NAME_ACCOUNT_MAP, SHEET_NAME_FLOW_HISTORY, HEADER_IDENTITY_CSV, HEADER_LEAD_FLOW_CSV, HEADER_DROPSHIP_FLOW_CSV, HEADER_STORE_CSV, HEADER_ACCOUNT_MAP_CSV, HEADER_FLOW_HISTORY_CSV, analyzeSheetColumns, ColumnMetadata, fetchRemoteSheetNames, SYSTEM_SHEET_NAMES, getSpreadsheetId, SHEET_NAME_INTAKE_SOURCES, SHEET_NAME_INTAKE_MAPPINGS } from '../services/sheetService';
 import { IntakeService } from '../services/intakeService';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
-import { SourceSettingsModal } from './SourceSettingsModal';
 
 // --- SUB-COMPONENTS ---
 
@@ -28,7 +27,7 @@ const DashboardSettings: React.FC<{ user: GoogleUser | null, syncStatus: 'succes
                 <Users className="text-blue-500" size={24}/>
                 <span className="text-2xl font-bold text-gray-800">{leads.length}</span>
             </div>
-            <p className="text-xs text-gray-400 mt-2">In local cache</p>
+            <p className="text-xs text-gray-400 mt-2">In local cache (Joined)</p>
         </div>
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Active Rules</h3>
@@ -47,9 +46,9 @@ const AppGuide: React.FC = () => (
         <p>This CRM is built on top of Google Sheets using a split-schema architecture.</p>
         <ul>
             <li><strong>Leads (Identity):</strong> Stores core contact info (Name, Phone, Company).</li>
-            <li><strong>Flows (Operational):</strong> Stores transaction info (Stage, Amount, Owner).</li>
+            <li><strong>LEAD_FLOWS (Operational):</strong> Stores transaction info (Stage, Amount, Owner).</li>
         </ul>
-        <p>Use the tabs on the left to configure data sources, automation rules, and connection settings.</p>
+        <p>The application joins these tables using <code>lead_id</code> as the primary key.</p>
     </div>
 );
 
@@ -94,17 +93,19 @@ const SchemaTable = ({ title, csv, mapping }: { title: string, csv: string, mapp
 }
 
 const SchemaSettings: React.FC = () => {
+    // Aligned with HEADER_IDENTITY_CSV
     const identityMapping: Record<number, string> = {
         0: 'leadId', 1: 'contactPerson', 2: 'number', 3: 'email', 4: 'companyName',
-        5: 'city', 6: 'source', 7: 'category (fallback)', 8: 'createdBy', 9: 'tags',
+        5: 'city', 6: 'source', 7: 'category (identity)', 8: 'createdBy', 9: 'tags',
         10: 'identityStatus', 11: 'createdAt', 12: 'leadScore', 13: 'remarks', 14: 'sourceRowId', 15: 'info'
     };
 
+    // Aligned with HEADER_LEAD_FLOW_CSV
     const flowMapping: Record<number, string> = {
-        0: 'flowId', 1: 'leadId (FK)', 2: 'originalChannel', 3: 'channel', 4: 'owner',
-        5: 'status', 6: 'stage', 7: 'sourceFlowTag', 8: 'createdAt', 9: 'updatedAt',
+        0: 'flowId', 1: 'leadId (FK)', 2: 'originalChannel', 3: 'channel', 4: 'ydsPoc (owner)',
+        5: 'status (flow)', 6: 'stage', 7: 'sourceFlowTag', 8: 'createdAt', 9: 'updatedAt',
         10: 'startDate', 11: 'expectedCloseDate', 12: 'wonDate', 13: 'lostDate', 14: 'lostReason',
-        15: 'notes', 16: 'estimatedQty', 17: 'productType', 18: 'printType', 19: 'priority',
+        15: 'orderInfo (notes)', 16: 'estimatedQty', 17: 'productType', 18: 'printType', 19: 'priority',
         20: 'contactStatus', 21: 'paymentUpdate', 22: 'nextAction', 23: 'nextActionDate',
         24: 'intent', 25: 'category (primary)', 26: 'customerType'
     };
@@ -126,7 +127,7 @@ const SchemaSettings: React.FC = () => {
             />
             
             <SchemaTable 
-                title="Operational Schema (Lead_Flows Sheet)" 
+                title="Operational Schema (LEAD_FLOWS Sheet)" 
                 csv={HEADER_LEAD_FLOW_CSV} 
                 mapping={flowMapping} 
             />
@@ -328,211 +329,6 @@ const TemplatesSettings: React.FC<{ templates: MessageTemplate[], onUpdate: any,
     </div>
 );
 
-const SourceIntegrations: React.FC<{ user: GoogleUser | null, onSetImportedLeads: (leads: Lead[]) => void, onViewImports: () => void }> = ({ user, onSetImportedLeads, onViewImports }) => {
-    const [dynamicSources, setDynamicSources] = useState<SourceConfig[]>([]);
-    const [fieldMaps, setFieldMaps] = useState<FieldMapRule[]>([]);
-    const [loadingConfig, setLoadingConfig] = useState(false);
-
-    useEffect(() => {
-        const load = async () => {
-            setLoadingConfig(true);
-            try {
-                const res = await IntakeService.fetchIntakeConfig();
-                if (res.success) {
-                    setDynamicSources(res.sources);
-                    setFieldMaps(res.mappings);
-                }
-            } catch (e) {
-                console.error("Failed to load source config", e);
-            }
-            setLoadingConfig(false);
-        };
-        load();
-    }, []);
-
-    const staticSources = Object.entries(SOURCE_CONFIG).map(([key, config]) => ({ key, name: key, ...config, headers: [] as string[] }));
-    
-    const displaySources = dynamicSources.length > 0 
-        ? dynamicSources.map(s => ({ key: s.layer, name: s.layer, id: s.sheetId, sheetName: s.tab, headers: [] as string[] })) 
-        : staticSources;
-
-    const [inspectedHeaders, setInspectedHeaders] = useState<{name: string, headers: string[], error?: string, expected: string[], currentTab: string} | null>(null);
-    const [inspectedTabs, setInspectedTabs] = useState<string[]>([]);
-    const [loadingState, setLoadingState] = useState<{action: string, key: string} | null>(null);
-    const [importResult, setImportResult] = useState<{message: string, type: 'success' | 'error'} | null>(null);
-    const [editorOpen, setEditorOpen] = useState<{ isOpen: boolean, source: any }>({ isOpen: false, source: null });
-
-    const handleInspect = async (sourceKey: string, source: any) => {
-        setLoadingState({ action: 'inspect', key: sourceKey });
-        const sheetName = source.sheetName || 'Sheet1';
-        
-        try {
-            const [headerRes, tabRes] = await Promise.all([
-                fetchRemoteHeaders(source.id, sheetName),
-                fetchRemoteSheetNames(source.id)
-            ]);
-
-            setInspectedHeaders({
-                name: source.name,
-                headers: headerRes.headers || [],
-                error: headerRes.error,
-                expected: source.headers || [],
-                currentTab: sheetName
-            });
-            setInspectedTabs(tabRes.sheetNames || []);
-            setImportResult(null);
-        } catch (e: any) {
-            setImportResult({ message: `Inspection Failed: ${e.message}`, type: 'error' });
-        } finally {
-            setLoadingState(null);
-        }
-    };
-
-    const handleImport = async (sourceKey: string) => {
-        // Redirect to Intake Inbox as per new methodology
-        onViewImports();
-    };
-
-    return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-xl font-bold text-gray-900">External Data Sources</h2>
-                    <p className="text-sm text-gray-500">Fetch data from external raw sheets into staging.</p>
-                </div>
-                {!user && (
-                    <div className="bg-yellow-50 text-yellow-800 px-3 py-1 rounded text-xs font-bold border border-yellow-200 flex items-center gap-2">
-                        <AlertTriangle size={14} /> Login Required
-                    </div>
-                )}
-            </div>
-
-            {loadingConfig && <div className="text-sm text-gray-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin"/> Loading configurations from Sheet...</div>}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {displaySources.map(src => (
-                    <div key={src.id + src.sheetName} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col h-full">
-                        <div className="flex justify-between items-start mb-2">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
-                                <FileSpreadsheet size={16} className="text-green-600"/> {src.name}
-                            </h3>
-                            <div className="flex gap-1">
-                                <button onClick={() => setEditorOpen({ isOpen: true, source: { layer: src.name, ...src } })} className="p-1 text-gray-400 hover:text-blue-600" title="Edit Mapping">
-                                    <Edit2 size={14}/>
-                                </button>
-                                <a href={`https://docs.google.com/spreadsheets/d/${src.id}`} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-blue-600" title="Open Sheet">
-                                    <ExternalLink size={14} />
-                                </a>
-                            </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mb-4 font-mono bg-gray-50 p-1.5 rounded truncate" title={src.id}>{src.id}</p>
-                        
-                        <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
-                            <Table size={10}/> Tab: <span className="font-medium text-gray-700">{src.sheetName}</span>
-                        </div>
-
-                        <div className="mt-auto space-y-2">
-                             <Button 
-                                variant="primary" 
-                                size="sm" 
-                                className="w-full"
-                                onClick={() => handleImport(src.key)}
-                                disabled={!user || !!loadingState}
-                                icon={<Import size={14}/>}
-                            >
-                                Go to Inbox
-                            </Button>
-                            <Button 
-                                variant="secondary" 
-                                size="sm" 
-                                className="w-full"
-                                onClick={() => handleInspect(src.key, src)}
-                                disabled={!user || !!loadingState}
-                                isLoading={loadingState?.key === src.key && loadingState?.action === 'inspect'}
-                            >
-                                Inspect Headers
-                            </Button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {dynamicSources.length === 0 && !loadingConfig && (
-                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800">
-                    <p className="font-bold flex items-center gap-2"><Info size={16}/> Using Default System Sources</p>
-                    <p className="mt-1">
-                        To add custom sources, go to the Inbox view or add rows to the <strong>Intake_Sources</strong> tab in your Google Sheet.
-                    </p>
-                </div>
-            )}
-
-            {inspectedHeaders && (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 animate-slide-in-right">
-                    <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Stethoscope size={18} /> Header Inspection: {inspectedHeaders.name}
-                    </h3>
-                    
-                    {inspectedHeaders.error ? (
-                        <div className="text-red-600 bg-red-50 p-3 rounded text-sm">{inspectedHeaders.error}</div>
-                    ) : (
-                        <div className="space-y-6">
-                             {/* Tabs Section */}
-                             <div>
-                                 <p className="text-[10px] font-bold text-gray-400 uppercase mb-2 flex items-center gap-2">
-                                     <Layers size={12}/> Available Sheets (Tabs)
-                                 </p>
-                                 <div className="flex flex-wrap gap-2">
-                                     {inspectedTabs.map(tab => (
-                                         <span 
-                                            key={tab} 
-                                            className={`text-xs px-2 py-1.5 rounded border flex items-center gap-1 ${
-                                                tab === inspectedHeaders.currentTab 
-                                                ? 'bg-blue-100 text-blue-800 border-blue-200 font-bold' 
-                                                : 'bg-white text-gray-600 border-gray-200'
-                                            }`}
-                                         >
-                                             {tab === inspectedHeaders.currentTab && <CheckCircle size={10} />}
-                                             {tab}
-                                         </span>
-                                     ))}
-                                     {inspectedTabs.length === 0 && <span className="text-xs text-gray-400 italic">No tabs found</span>}
-                                 </div>
-                             </div>
-
-                             {/* Headers Section */}
-                             <div>
-                                 <p className="text-[10px] font-bold text-gray-400 uppercase mb-2 flex items-center gap-2">
-                                     <Table size={12}/> Actual Headers in '{inspectedHeaders.currentTab}'
-                                 </p>
-                                 <div className="flex gap-2 flex-wrap">
-                                     {inspectedHeaders.headers.map(h => {
-                                         const isExpected = inspectedHeaders.expected.map(e => e.toLowerCase()).includes(h.toLowerCase());
-                                         return (
-                                             <span key={h} className={`text-xs px-2 py-1 rounded border ${isExpected ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                                                 {h}
-                                             </span>
-                                         )
-                                     })}
-                                     {inspectedHeaders.headers.length === 0 && <span className="text-xs text-gray-400 italic">Empty or unreadable row</span>}
-                                 </div>
-                             </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {editorOpen.isOpen && (
-                <SourceSettingsModal 
-                    isOpen={editorOpen.isOpen} 
-                    onClose={() => setEditorOpen({ isOpen: false, source: null })} 
-                    source={editorOpen.source}
-                    currentRules={fieldMaps.filter(f => f.sourceLayer === editorOpen.source.name)}
-                />
-            )}
-        </div>
-    );
-};
-
 // --- MAIN COMPONENT ---
 
 interface SettingsViewProps {
@@ -571,7 +367,7 @@ const TABS = [
   { id: 'guide', label: 'App Guide', icon: Compass },
   { id: 'schema', label: 'Schema & Mappings', icon: FileText },
   { id: 'inspector', label: 'Sheet Inspector', icon: FileSearch },
-  { id: 'sources', label: 'Data Sources', icon: Network },
+  // Removed Data Sources as they are hardcoded
   { id: 'sop', label: 'Workflow & Data SOP', icon: GitMerge },
   { id: 'diagnostics', label: 'Diagnostics', icon: Stethoscope },
   { id: 'connection', label: 'Connection', icon: Database },
@@ -655,9 +451,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
              )}
              {activeTab === 'inspector' && (
                  <SheetInspector currentId={currentSpreadsheetId} />
-             )}
-             {activeTab === 'sources' && (
-                 <SourceIntegrations user={user} onSetImportedLeads={onSetImportedLeads} onViewImports={onViewImports} />
              )}
              {activeTab === 'sop' && (
                  <SopVisualizer 
