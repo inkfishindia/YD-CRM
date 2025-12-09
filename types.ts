@@ -159,6 +159,7 @@ export interface SourceConfig {
   tab: string;          // Col 2: Tab
   type: string;         // Col 3: Type
   tags: string[];       // Col 4: Tags
+  isActive: boolean;    // Col 5: Active Status (TRUE/FALSE)
 }
 
 export interface FieldMapRule {

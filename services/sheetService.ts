@@ -1,3 +1,4 @@
+
 // ... imports
 import { Lead, ActivityLog, SourceConfig, FieldMapRule, LegendItem, StageRule, SLARule, AutoActionRule, MessageTemplate } from '../types';
 import { safeGetItem } from './googleAuth';
@@ -23,6 +24,8 @@ export const SHEET_NAME_AUTO_ACTION = 'Auto_Actions';
 export const SHEET_NAME_TEMPLATES = 'Message_Templates';
 export const SHEET_NAME_SOURCES = 'Sources';
 export const SHEET_NAME_FIELD_MAPS = 'SOURCES_FIELD_MAP';
+export const SHEET_NAME_INTAKE_SOURCES = 'Intake_Sources';
+export const SHEET_NAME_INTAKE_MAPPINGS = 'Intake_Mappings';
 export const SHEET_NAME_DROPSHIP_FLOWS = 'Dropship_Flows';
 export const SHEET_NAME_STORES = 'Stores';
 export const SHEET_NAME_ACCOUNT_MAP = 'Account_Map';
@@ -46,7 +49,7 @@ export const HEADER_FLOW_HISTORY_CSV = 'history_id,flow_id,stage,timestamp,durat
 export const SYSTEM_SHEET_NAMES = [
     SHEET_NAME_LEADS, SHEET_NAME_LEAD_FLOWS, SHEET_NAME_LEGEND, SHEET_NAME_ACTIVITY,
     SHEET_NAME_STAGE_RULES, SHEET_NAME_SLA_RULES, SHEET_NAME_AUTO_ACTION, SHEET_NAME_TEMPLATES,
-    SHEET_NAME_SOURCES
+    SHEET_NAME_SOURCES, SHEET_NAME_INTAKE_SOURCES, SHEET_NAME_INTAKE_MAPPINGS
 ];
 
 export const SHEET_IDS = MODULE_IDS;
@@ -195,25 +198,28 @@ const getColumnLetter = (colIndex: number): string => {
 
 export const fetchIntakeConfig = async (): Promise<{ success: boolean, sources: SourceConfig[], fieldMaps: FieldMapRule[] }> => {
     try {
-        const sheetId = getSpreadsheetId();
+        // Use MODULE_IDS.CONFIG as the central config sheet
+        const configSheetId = MODULE_IDS.CONFIG;
         
-        const sourcesData = await loadSheetRange(sheetId, 'Sources!A2:E');
-        const fieldMapsData = await loadSheetRange(sheetId, 'SOURCES_FIELD_MAP!A2:I');
+        // Use user requested ranges: Intake_Sources!A2:H and Intake_Mappings!A2:H
+        const sourcesData = await loadSheetRange(configSheetId, `${SHEET_NAME_INTAKE_SOURCES}!A2:H`);
+        const fieldMapsData = await loadSheetRange(configSheetId, `${SHEET_NAME_INTAKE_MAPPINGS}!A2:H`);
         
         const sources: SourceConfig[] = (sourcesData || []).map(row => ({
-            layer: row[0],        // "Commerce Leads", "Dropship Leads", "TKW new leads"
-            sheetId: row[1],      // Sheet ID
-            tab: row[2],          // Tab name
-            type: row[3],         // "Dropship / Partner"
-            tags: row[4] ? row[4].split('/').map((t: string) => t.trim()) : []
+            layer: row[0] || '',        // Layer Name
+            sheetId: row[1] || '',      // Sheet ID
+            tab: row[2] || '',          // Tab Name
+            type: row[3] || 'Manual',   // Type
+            tags: row[4] ? row[4].split(',').map((t: string) => t.trim()) : [],
+            isActive: row[5] === 'TRUE' // Active Flag
         }));
 
         const fieldMaps: FieldMapRule[] = (fieldMapsData || []).map(row => ({
-            id: row[0],           // sfm35, sfm36...
-            sourceLayer: row[1],  // "Commerce Leads"
-            sourceHeader: row[2], // "Date", "Business Name"
-            intakeField: row[3],  // "created_at", "company"
-            transform: row[4] || 'none',
+            id: row[0] || `map-${Math.random()}`,
+            sourceLayer: row[1] || '',  // Source Layer Name
+            sourceHeader: row[2] || '', // Header in Source
+            intakeField: row[3] || '',  // CRM Field
+            transform: row[4] || '',    // Transform Function
             isRequired: row[5] === 'TRUE',
             notes: row[6] || ''
         }));
@@ -221,7 +227,8 @@ export const fetchIntakeConfig = async (): Promise<{ success: boolean, sources: 
         return { success: true, sources, fieldMaps };
     } catch (e) {
         console.error("Failed to load intake config", e);
-        return { success: false, sources: [], fieldMaps: [] };
+        // Fallback to defaults if sheet fails
+        return { success: false, sources: [], fieldMaps: HARDCODED_FIELD_MAPS };
     }
 };
 
@@ -266,7 +273,6 @@ export const fetchLeadsFromSource = async (sourceKey: string): Promise<{ success
         const { headers, rows } = res;
         const leads: Lead[] = [];
         
-        // Simple heuristic map based on HARDCODED_FIELD_MAPS
         const maps = HARDCODED_FIELD_MAPS.filter(m => m.sourceLayer === sourceKey);
         
         rows.forEach((row, i) => {
@@ -575,13 +581,13 @@ export const writeBackToSourceSheet = async (sheetId: string, tabName: string, r
 
 export const addSourceConfig = async (config: SourceConfig): Promise<boolean> => {
     const sheetId = getSpreadsheetId();
-    const row = [config.layer, config.sheetId, config.tab, config.type, config.tags.join(',')];
-    return appendRow(sheetId, SHEET_NAME_SOURCES, row);
+    const row = [config.layer, config.sheetId, config.tab, config.type, config.tags.join(','), 'TRUE'];
+    return appendRow(sheetId, SHEET_NAME_INTAKE_SOURCES, row);
 };
 
 export const saveFieldMappings = async (layerName: string, mappings: Partial<FieldMapRule>[]): Promise<boolean> => {
     const sheetId = getSpreadsheetId();
-    const tabName = SHEET_NAME_FIELD_MAPS;
+    const tabName = SHEET_NAME_INTAKE_MAPPINGS;
     
     try {
         // 1. Fetch existing mappings
@@ -668,7 +674,7 @@ export const fetchProjectManagerData = async (): Promise<any> => {
 
 // --- Private Utilities ---
 
-const appendRow = async (spreadsheetId: string, range: string, values: any[]): Promise<boolean> => {
+export const appendRow = async (spreadsheetId: string, range: string, values: any[]): Promise<boolean> => {
     try {
         await window.gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId,
@@ -681,4 +687,19 @@ const appendRow = async (spreadsheetId: string, range: string, values: any[]): P
         console.error(`Append failed to ${range}`, e);
         return false;
     }
+};
+
+// Alias for external modules if they prefer a more descriptive name
+export const appendToSheet = (spreadsheetId: string, range: string, values: any[]): Promise<boolean> => {
+    // If values is array of arrays (multiple rows), use update/append differently
+    // Here we assume simple append of one row at a time based on usage, or strict typing.
+    // If values[0] is array, it means it's [[col1, col2]].
+    if (Array.isArray(values[0])) {
+         // It's already [[...]], pass directly to API via custom logic or just pick first
+         // But `appendRow` wraps in `[values]`.
+         // So if we pass `[[col1, col2]]`, it becomes `[[[col1, col2]]]`. This is wrong for API.
+         // We must pass flat `[col1, col2]` to `appendRow`.
+         return appendRow(spreadsheetId, range, values[0]);
+    }
+    return appendRow(spreadsheetId, range, values);
 };

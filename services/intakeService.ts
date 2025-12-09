@@ -1,7 +1,7 @@
 
 import { 
-    fetchIntakeConfig, fetchDynamicSheet, addLead, addActivityLog, updateSourceRow, SOURCE_CONFIG,
-    writeToLeadsSheet, writeToLeadFlowsSheet, writeBackToSourceSheet, getNextLeadNumber, HARDCODED_FIELD_MAPS, MODULE_IDS
+    fetchIntakeConfig, fetchDynamicSheet, addLead, updateSourceRow, SOURCE_CONFIG,
+    MODULE_IDS, appendToSheet, fetchAllLeads, getNextLeadNumber, HEADER_LEAD_CSV, HEADER_LEAD_FLOW_CSV
 } from './sheetService';
 import { 
     IntakeRow, FieldMapRule, Lead, SourceConfig, 
@@ -10,7 +10,7 @@ import {
 
 // --- TRANSFORM HELPERS ---
 const transforms = {
-    normalizePhone: (val: string) => val ? String(val).replace(/\D/g, '') : '',
+    normalizePhone: (val: string) => val ? String(val).replace(/\D/g, '').slice(-10) : '',
     normalizeQty: (val: string) => parseInt(String(val).replace(/\D/g, '')) || 0,
     mapSource: (val: string) => val ? String(val).trim() : 'Vendor',
     lowerCase: (val: string) => val ? String(val).toLowerCase().trim() : '',
@@ -18,6 +18,7 @@ const transforms = {
     dateParse: (val: string) => {
         if (!val) return formatDate();
         const cleanVal = String(val).trim();
+        // Handle common formats
         const dmyPattern = /^(\d{1,2})[-./](\d{1,2})[-./](\d{2,4})$/;
         const match = cleanVal.match(dmyPattern);
         
@@ -39,154 +40,91 @@ const transforms = {
     }
 };
 
+const applyTransform = (value: any, transform: string): any => {
+    const fn = transforms[transform as keyof typeof transforms];
+    return fn ? fn(String(value)) : value;
+};
+
 // --- CORE: PARSER ---
-const parseRow = (
-    rawData: any[], 
-    headers: string[], 
-    sourceConfig: SourceConfig, 
-    rules: FieldMapRule[],
-    metadataIndices: { id: number, status: number, at: number, by: number },
-    rowIndex: number
-): IntakeRow | null => {
+const parseRow = (rawData: any[], headers: string[], sourceConfig: SourceConfig, rules: FieldMapRule[], metadataIndices: any, rowIndex: number): IntakeRow => {
     
-    if (metadataIndices.status !== -1) {
-        const status = String(rawData[metadataIndices.status] || '').trim().toLowerCase();
-        if (status === 'imported' || status === 'ignored') {
-            return null; 
-        }
-    }
-
-    if (metadataIndices.id !== -1) {
-        const existingId = rawData[metadataIndices.id];
-        if (existingId && (String(existingId).includes('YDS-') || String(existingId).includes('LEAD-'))) {
-            return null; 
-        }
-    }
-
-    const layerRules = rules.filter(r => r.sourceLayer === sourceConfig.layer);
-    const prioritizedRules = [...layerRules].reverse();
-
     const rowMap: Record<string, any> = {};
-    const errors: string[] = [];
     const rawObj: Record<string, any> = {};
-    const normalizedRawObj: Record<string, any> = {};
-
+    
+    // Create map of Header Name -> Value
     headers.forEach((h, i) => {
-        if (h) {
-            rawObj[h] = rawData[i];
-            normalizedRawObj[h.toLowerCase().trim()] = rawData[i];
-        }
+        if (h) rawObj[h.toLowerCase().trim()] = rawData[i];
     });
+    
+    // Apply rules
+    const relevantRules = rules.filter(r => r.sourceLayer === sourceConfig.layer);
 
-    prioritizedRules.forEach(rule => {
-        let val = rawObj[rule.sourceHeader];
-        if (val === undefined && rule.sourceHeader) {
-            val = normalizedRawObj[rule.sourceHeader.toLowerCase().trim()];
-        }
-
-        let transformedVal: string | number = '';
-        if (val) {
-            if (rule.transform && transforms[rule.transform as keyof typeof transforms]) {
-                transformedVal = transforms[rule.transform as keyof typeof transforms](String(val));
-            } else {
-                transformedVal = String(val).trim();
-            }
-        }
-
-        if (!rowMap[rule.intakeField] && transformedVal) {
-             rowMap[rule.intakeField] = transformedVal;
-        } else if (!rowMap[rule.intakeField]) {
-             rowMap[rule.intakeField] = '';
+    relevantRules.forEach(rule => {
+        const headerKey = rule.sourceHeader.toLowerCase().trim();
+        const val = rawObj[headerKey];
+        if (val !== undefined && val !== null) {
+            rowMap[rule.intakeField] = rule.transform ? applyTransform(val, rule.transform) : String(val).trim();
         }
     });
     
-    const requiredRules = layerRules.filter(r => r.isRequired);
-    const requiredFields = new Set(requiredRules.map(r => r.intakeField));
+    // Validate required fields
+    const company = rowMap['companyName'] || '';
+    const name = rowMap['contactPerson'] || '';
+    const errors: string[] = [];
     
-    requiredFields.forEach(field => {
-        if (!rowMap[field] || rowMap[field] === '' || rowMap[field] === 0) {
-             errors.push(`${field} is required`);
-        }
-    });
-
-    const findVal = (keys: string[]) => {
-        for (const k of keys) {
-            const val = normalizedRawObj[k.toLowerCase()];
-            if (val !== undefined && val !== null && String(val).trim() !== '') return String(val).trim();
-        }
-        return '';
-    };
-
-    const company = rowMap['companyName'] || findVal([
-        'company_name',     // TKW
-        'business name',    // Commerce
-        'company / brand'   // Dropship
-    ]);
-
-    let contact = rowMap['contactPerson'] || findVal([
-        'contact person',   // TKW
-        'first name',       // Commerce
-        'lead name'         // Dropship
-    ]);
-
-    const lastName = findVal(['last name']);
-    if (contact && lastName) {
-        contact = `${contact} ${lastName}`;
+    if (!company && !name) {
+        errors.push("Identity missing (company or name required)");
     }
-    rowMap['contactPerson'] = contact;
     
-    if (!company && !contact) errors.push("Identity missing (Company or Name required)");
-    
-    const stableId = `${sourceConfig.sheetId}-${sourceConfig.tab}-${rowIndex}`;
-
     return {
-        id: stableId, 
+        id: `INTAKE-${Math.random().toString(36).substr(2, 9)}`,
         sourceLayer: sourceConfig.layer,
         sourceSheetId: sourceConfig.sheetId,
         sourceTab: sourceConfig.tab,
         sourceRowIndex: rowIndex,
         
-        wbColIndex_Id: metadataIndices.id === -1 ? headers.length : metadataIndices.id, 
+        wbColIndex_Id: metadataIndices.id,
         wbColIndex_Status: metadataIndices.status,
         wbColIndex_ProcessedAt: metadataIndices.at,
         wbColIndex_ProcessedBy: metadataIndices.by,
         
+        // Mapped Fields
         companyName: company,
-        contactPerson: contact,
-        number: rowMap['phone'] || rowMap['number'] || findVal(['phone', 'mobile', 'whatsapp', 'phone / whatsapp']),
-        email: rowMap['email'] || findVal(['email']),
-        city: rowMap['city'] || findVal(['city', 'location']),
-        source: rowMap['source_refs'] || rowMap['source'] || sourceConfig.type,
-        date: rowMap['created_at'] || rowMap['date'] || formatDate(),
-        tags: rowMap['tags'] || '',
-        leadScore: rowMap['lead_score'] || rowMap['leadScore'] || '',
-        remarks: rowMap['note/description'] || rowMap['remarks'] || rowMap['comments'] || rowMap['yds comments'] || '',
-        info: rowMap['Info'] || rowMap['info'] || '',
-        sourceRowId: rowMap['sourceRowId'] || findVal(['lead_id', 'source_lead_id']) || '', 
-
-        channel: rowMap['channel'] || '',
-        owner: rowMap['owner'] || rowMap['created_by'] || findVal(['allocated to', 'yds - poc']) || '',
-        status: rowMap['status'] || 'New',
-        stage: rowMap['stage'] || 'New',
-        startDate: rowMap['start_date'] || '',
-        expectedCloseDate: rowMap['expected_close_date'] || '',
-        notes: rowMap['notes'] || '',
-        estimatedQty: parseInt(rowMap['estimated_qty'] || rowMap['estimatedQty'] || findVal(['est qty']) || '0') || 0,
-        productType: rowMap['product_type'] || rowMap['productType'] || '',
-        orderInfo: rowMap['order_information'] || rowMap['orderInfo'] || findVal(['requirement (verbatim)', 'order information']) || '', 
-        printType: rowMap['print_type'] || rowMap['printType'] || '',
-        priority: rowMap['priority'] || '',
-        contactStatus: rowMap['contact_status'] || rowMap['contactStatus'] || '',
-        paymentUpdate: rowMap['payment_update'] || rowMap['paymentUpdate'] || '',
-        intent: rowMap['intent'] || '', 
-        category: rowMap['category'] || rowMap['Category'] || findVal(['lead category', 'category']) || '', 
-        customerType: rowMap['customer_type'] || rowMap['customerType'] || '',
+        contactPerson: name,
+        number: rowMap['number'] || '',
+        email: rowMap['email'] || '',
+        city: rowMap['city'] || '',
+        date: rowMap['date'] || formatDate(),
+        sourceRowId: rowMap['sourceRowId'] || '',
+        estimatedQty: parseInt(rowMap['estimatedQty'] || '0'),
+        productType: rowMap['productType'] || '',
+        category: rowMap['category'] || '',
+        remarks: rowMap['remarks'] || '',
+        source: rowMap['source'] || sourceConfig.type,
         
-        storeUrl: rowMap['store_url'] || findVal(['website/social url']) || '',
-        platformType: rowMap['platform_type'] || findVal(['currently using']) || '',
-        integrationReady: rowMap['integration_ready'] || '',
-        nextActionDate: rowMap['nextActionDate'] || findVal(['next follow up', 'next_action_date']) || '',
-
+        // Defaults
+        channel: '',
+        owner: '',
+        status: 'New',
+        stage: 'New',
+        startDate: '',
+        expectedCloseDate: '',
+        notes: '',
+        printType: '',
+        priority: '',
+        contactStatus: '',
+        paymentUpdate: '',
+        intent: '',
+        customerType: '',
+        leadScore: '',
+        info: '',
+        storeUrl: '',
+        platformType: '',
+        integrationReady: '',
+        nextActionDate: '',
+        orderInfo: '',
+        tags: '',
+        
         rawData: rawObj,
         isValid: errors.length === 0,
         errors,
@@ -204,28 +142,8 @@ export interface SourceStat {
 
 export const IntakeService = {
     getConfig: async () => {
-        const res = await fetchIntakeConfig();
-        if (res.success) {
-            let sources = res.sources;
-            if (sources.length === 0) {
-                sources = Object.entries(SOURCE_CONFIG).map(([key, cfg]) => ({
-                    layer: key, 
-                    sheetId: cfg.id,
-                    tab: cfg.sheetName || 'Sheet1',
-                    type: key === 'TKW' ? 'Vendor' : 'Commerce', 
-                    tags: []
-                }));
-            }
-            return { sources, fieldMaps: res.fieldMaps.length > 0 ? res.fieldMaps : HARDCODED_FIELD_MAPS };
-        }
-        const sources = Object.entries(SOURCE_CONFIG).map(([key, cfg]) => ({
-            layer: key,
-            sheetId: cfg.id,
-            tab: cfg.sheetName || 'Sheet1',
-            type: 'Manual',
-            tags: []
-        }));
-        return { sources, fieldMaps: HARDCODED_FIELD_MAPS };
+        // Use the new specific function
+        return await fetchIntakeConfig();
     },
 
     previewSource: async (sourceConfig: SourceConfig, fieldMaps: FieldMapRule[]): Promise<{ success: boolean, results: { raw: any, parsed: IntakeRow }[], error?: string }> => {
@@ -236,24 +154,15 @@ export const IntakeService = {
             const { headers, rows } = res;
             if (rows.length === 0) return { success: false, results: [], error: 'Sheet is empty.' };
 
-            // Take top 3 non-empty rows for preview
             const sampleRows = rows.slice(0, 3);
-            
-            // Mock metadata indices (-1 to force parse without skipping)
             const metadataIndices = { id: -1, status: -1, at: -1, by: -1 };
 
             const results = sampleRows.map((row, idx) => {
-                const actualRowIndex = idx + 2;
-                const parsed = parseRow(row, headers, sourceConfig, fieldMaps, metadataIndices, actualRowIndex);
-                
-                // Reconstruct Raw Data Map for UI display
+                const parsed = parseRow(row, headers, sourceConfig, fieldMaps, metadataIndices, idx + 2);
                 const raw: Record<string, any> = {};
-                headers.forEach((h, i) => {
-                    if(h) raw[h] = row[i];
-                });
-
+                headers.forEach((h, i) => { if(h) raw[h] = row[i]; });
                 return { raw, parsed };
-            }).filter(item => item.parsed !== null) as { raw: any, parsed: IntakeRow }[];
+            });
 
             return { success: true, results };
         } catch (e: any) {
@@ -274,7 +183,10 @@ export const IntakeService = {
         const stats: SourceStat[] = [];
         const headersMap: Record<string, string[]> = {};
 
-        const results = await Promise.all(config.sources.map(async (source) => {
+        // Only scan active sources
+        const activeSources = config.sources.filter(s => s.isActive);
+
+        const results = await Promise.all(activeSources.map(async (source) => {
             const data = await fetchDynamicSheet(source.sheetId, source.tab);
             return { source, data };
         }));
@@ -291,26 +203,32 @@ export const IntakeService = {
             
             const validRows: IntakeRow[] = [];
             
+            // Helper to find column indices
             const findIdx = (names: string[]) => headers.findIndex(h => names.some(n => n.toLowerCase() === h.toLowerCase().trim()));
             
             const metadataIndices = {
-                id: findIdx([
-                    'yds_lead_id', 'yds lead id', 'YDS LEAD ID', 'crm_id', 'crm_row_id'
-                ]),
-                status: findIdx([
-                    'YDC - Status', 'Lead Status', 'crm_status', 'import_status', 'status'
-                ]),
-                at: findIdx([
-                    'crm_processed_at', 'processed_at', 'import_date'
-                ]),
-                by: findIdx([
-                    'crm_processed_by', 'processed_by', 'imported_by'
-                ])
+                id: findIdx(['yds_lead_id', 'yds lead id', 'YDS LEAD ID', 'crm_id']),
+                status: findIdx(['YDC - Status', 'Lead Status', 'crm_status', 'import_status', 'status']),
+                at: findIdx(['crm_processed_at', 'processed_at']),
+                by: findIdx(['crm_processed_by', 'processed_by'])
             };
 
             rows.forEach((row, idx) => {
                 if (row.length === 0 || !row[0]) return;
                 const actualRowIndex = idx + 2; 
+                
+                // Skip if already imported
+                if (metadataIndices.status !== -1) {
+                    const status = String(row[metadataIndices.status] || '').trim().toLowerCase();
+                    if (status === 'imported' || status === 'ignored') return;
+                }
+
+                // Skip if ID exists
+                if (metadataIndices.id !== -1) {
+                    const existingId = row[metadataIndices.id];
+                    if (existingId && (String(existingId).includes('YDS-') || String(existingId).includes('LEAD-'))) return;
+                }
+
                 const parsed = parseRow(row, headers, res.source, config.fieldMaps, metadataIndices, actualRowIndex);
                 if (parsed) {
                     validRows.push(parsed);
@@ -344,139 +262,100 @@ export const IntakeService = {
         return true;
     },
 
-    pushToCRM: async (rows: IntakeRow[]): Promise<{ successCount: number, failedCount: number, errors: string[] }> => {
-        let success = 0;
-        let failed = 0;
+    pushToCRM: async (rows: IntakeRow[]): Promise<{ successCount: number, failedCount: number, errors: string[], duplicateCount: number }> => {
+        let success = 0, failed = 0, duplicates = 0;
         const errors: string[] = [];
-        const now = new Date().toLocaleString();
-        const isoDate = new Date().toISOString();
-        const user = 'ActiveUser'; 
+        const now = formatDate();
+        
+        // 1. Fetch Existing to check duplicates
+        const existingLeads = await fetchAllLeads();
+        
+        const isDuplicate = (row: IntakeRow, db: Lead[]) => {
+            const inPhone = row.number ? String(row.number).replace(/\D/g, '') : '';
+            const inEmail = row.email ? String(row.email).toLowerCase().trim() : '';
+            return db.some(l => {
+                const dbPhone = l.number ? String(l.number).replace(/\D/g, '') : '';
+                const dbEmail = l.email ? String(l.email).toLowerCase().trim() : '';
+                return (inPhone.length > 6 && dbPhone.includes(inPhone)) || (inEmail.length > 4 && dbEmail === inEmail);
+            });
+        };
 
         for (const row of rows) {
             try {
-                // 1. Generate Lead ID
+                if (isDuplicate(row, existingLeads)) {
+                    duplicates++;
+                    continue; // Skip dupes
+                }
+
                 const nextNum = await getNextLeadNumber();
                 const leadId = `YDS-${String(nextNum).padStart(4, '0')}`;
                 const flowId = `FLOW-${String(nextNum).padStart(4, '0')}`;
                 
-                // 2. Build Lead Object
-                const leadData: Lead = {
-                    _rowIndex: -1, 
+                // Construct Rows
+                const leadsRow = [
                     leadId,
-                    flowId,
-                    
-                    // Identity
-                    companyName: row.companyName || '',
-                    contactPerson: row.contactPerson || '',
-                    number: row.number || '',
-                    email: row.email || '',
-                    city: row.city || '',
-                    source: row.source || row.sourceLayer,
-                    category: row.category || (row.sourceLayer.includes('Commerce') || row.sourceLayer.includes('DS') ? 'Dropshipping' : 'Customisation'),
-                    createdBy: user,
-                    tags: row.tags,
-                    identityStatus: 'Active',
-                    createdAt: isoDate,
-                    date: row.date || formatDate(),
-                    leadScore: row.leadScore || '',
-                    remarks: row.remarks || '',
-                    sourceRowId: row.sourceRowId || `${row.sourceLayer}.Row${row.sourceRowIndex}`,
-                    info: row.info || '',
-
-                    // Flow
-                    originalChannel: row.channel || '',
-                    channel: row.channel || (row.sourceLayer.includes('TKW') ? 'B2B' : row.sourceLayer.includes('Commerce') || row.sourceLayer.includes('DS') ? 'Dropshipping' : 'B2B'),
-                    owner: row.owner || row.owner || 'Unassigned',
-                    ydsPoc: row.owner || row.owner || 'Unassigned',
-                    status: row.status || 'New',
-                    stage: row.stage || 'New',
-                    sourceFlowTag: row.sourceLayer,
-                    updatedAt: isoDate,
-                    startDate: row.startDate || isoDate,
-                    expectedCloseDate: row.expectedCloseDate || '',
-                    wonDate: '',
-                    lostDate: '',
-                    lostReason: '',
-                    notes: row.notes || row.orderInfo || '',
-                    estimatedQty: row.estimatedQty || 0,
-                    productType: row.productType || '',
-                    printType: row.printType || '',
-                    priority: row.priority || '🟢 Low',
-                    contactStatus: row.contactStatus || 'Pending',
-                    paymentUpdate: row.paymentUpdate || '',
-                    nextAction: 'Initial Contact',
-                    nextActionDate: row.nextActionDate || addDaysToDate(1),
-                    intent: row.intent || 'Unknown',
-                    customerType: row.customerType || 'New',
-                    
-                    // Computed/UI
-                    orderInfo: row.orderInfo || '',
-                    contactAttempts: 0,
-                    lastContactDate: '',
-                    lastAttemptDate: '',
-                    slaStatus: 'Pending',
-                    slaHealth: '🟢',
-                    daysOpen: '0d',
-                    actionOverdue: 'OK',
-                    firstResponseTime: '',
-                    stageChangedDate: isoDate,
-                    
-                    // DS
-                    platformType: row.platformType || '',
-                    integrationReady: row.integrationReady || '',
-                    storeUrl: row.storeUrl || '',
-                    accountCreated: '',
-                    dashboardLinkSent: '',
-                    onboardingStartedDate: '',
-                    activationDate: '',
-                    sampleRequired: '',
-                    sampleStatus: '',
-                    workflowType: '',
-                    designsReady: '',
-                    firstProductCreated: '',
-                    whatsappMessage: ''
-                };
-
-                const ok = await addLead(leadData);
-
-                if (ok) {
+                    row.contactPerson || row.companyName,
+                    row.number,
+                    row.email,
+                    row.companyName,
+                    row.city,
+                    row.source,
+                    row.category,
+                    'System',
+                    '',
+                    'New',
+                    now,
+                    '',
+                    row.remarks,
+                    row.sourceRowId,
+                    ''
+                ];
+                
+                const closeDate = addDaysToDate(14);
+                const flowsRow = [
+                    flowId, leadId,
+                    row.sourceLayer.includes('Commerce') ? 'Dropshipping' : 'B2B',
+                    row.sourceLayer.includes('Commerce') ? 'Dropshipping' : 'B2B',
+                    'Unassigned', 'Active', 'New', row.source,
+                    now, now, now, closeDate,
+                    '', '', '', `Imported from ${row.sourceLayer}`,
+                    row.estimatedQty, row.productType, '', '', '', '', '', '', '', row.category, ''
+                ];
+                
+                const ok1 = await appendToSheet(MODULE_IDS.CORE, 'Leads', [leadsRow]);
+                const ok2 = await appendToSheet(MODULE_IDS.CORE, 'LEAD_FLOWS', [flowsRow]);
+                
+                if (ok1 && ok2) {
                     success++;
                     
-                    // 3. Write back to source sheet
+                    // Update in-memory duplication check for subsequent rows in this batch
+                    existingLeads.push({ 
+                        leadId, number: row.number, email: row.email 
+                    } as Lead);
+
+                    // Write Back
                     const updates = [];
                     if (row.wbColIndex_Id !== -1) updates.push({ colIndex: row.wbColIndex_Id, value: leadId });
                     if (row.wbColIndex_Status !== -1) updates.push({ colIndex: row.wbColIndex_Status, value: 'Imported' });
                     if (row.wbColIndex_ProcessedAt !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedAt, value: now });
-                    if (row.wbColIndex_ProcessedBy !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedBy, value: user });
+                    if (row.wbColIndex_ProcessedBy !== -1) updates.push({ colIndex: row.wbColIndex_ProcessedBy, value: 'System' });
 
-                    await updateSourceRow(
-                        row.sourceSheetId,
-                        row.sourceTab,
-                        row.sourceRowIndex - 1, 
-                        updates
-                    );
-
-                    await addActivityLog({
-                        logId: `LOG-${Date.now()}`,
-                        leadId,
-                        activityType: 'Import',
-                        timestamp: now,
-                        owner: 'System', 
-                        notes: `Imported from ${row.sourceLayer}. Source Row: ${row.sourceRowIndex}`,
-                        fromValue: '',
-                        toValue: 'New'
-                    });
+                    if (updates.length > 0) {
+                        // row index in sheet is 0-based, data often starts at 1 (header), row index from scan logic is usually exact line number or adjusted.
+                        // Our parser sets sourceRowIndex as actual row number (1-based). API uses 0-based index. So -1.
+                        await updateSourceRow(row.sourceSheetId, row.sourceTab, row.sourceRowIndex - 1, updates);
+                    }
                 } else {
                     failed++;
-                    errors.push(`Failed to write lead ${row.companyName}`);
+                    errors.push(`Failed to append rows for ${row.companyName}`);
                 }
             } catch (e: any) {
+                console.error('Import error:', e);
                 failed++;
                 errors.push(`Error importing ${row.companyName}: ${e.message}`);
-                console.error('Import error:', e);
             }
         }
-
-        return { successCount: success, failedCount: failed, errors };
+        
+        return { successCount: success, failedCount: failed, errors, duplicateCount: duplicates };
     }
 };
